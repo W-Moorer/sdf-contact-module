@@ -1,0 +1,20 @@
+{
+  "N_numeric": 1256.637061435917,
+  "N_analytic": 1256.6370614359168,
+  "Tz_numeric": -318.337583588258,
+  "Tz_analytic": -318.34805556376557,
+  "relative_error_Tz": 3.2894736828343145e-05,
+  "Rspin_numeric": 0.5066499999999999,
+  "Rspin_analytic": 0.5066666666666666,
+  "Ft_residual": 1.2786031889431494e-14,
+  "Ft_residual_normalized": 2.0349601777336288e-17,
+  "friction_power": 0.0,
+  "force_balance_error": 0.0,
+  "num_quadrature_points": 1280,
+  "num_active_points": 1280,
+  "R_i": 0.4,
+  "R_o": 0.6,
+  "mu": 0.5,
+  "penetration": 0.002,
+  "omega": 1.0
+}
