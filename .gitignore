@@ -1,0 +1,14 @@
+# opencode configuration
+.opencode/
+opencode.json
+
+# design notes (Chinese)
+reference/
+docs/
+
+# build artifacts
+build/
+
+# Python cache
+__pycache__/
+*.pyc
