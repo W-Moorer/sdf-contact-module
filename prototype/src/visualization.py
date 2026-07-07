@@ -5,6 +5,16 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import os
 
+plt.rcParams.update({
+    'font.family': 'Times New Roman',
+    'mathtext.fontset': 'stix',
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'legend.fontsize': 10,
+})
+
 def save_all_figures(X_q, w_q, result, params, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     R_o = params['R_o']
