@@ -2,6 +2,13 @@
 
 All figures are rendered in Times New Roman font.
 
+## scenario_schematic.png
+
+3D schematic of the ring-on-cube torsion scenario. A hollow cylinder (Body A) presses into a cube (Body B) with penetration $\delta$ and rotates about the $z$-axis with angular velocity $\Omega$. The annular contact patch (red) is the interface where frictional contact forces are integrated.
+
+- **Generator**: `scripts/gen_schematic.py`
+- **Parameters**: $R_i=0.4$, $R_o=0.6$, $\delta=0.002$, $\Omega=1.0$
+
 ## contact_pressure_top.png
 
 Top view of the annular contact patch with effective pressure ($\hat{p}_q = p(g_h)|\nabla\phi_h|$) shown in color. The ring shape (inner radius 0.4, outer radius 0.6) confirms the annular contact patch.

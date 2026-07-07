@@ -2,6 +2,10 @@
 
 A standalone C++ plugin for building, storing, and querying **Signed Distance Fields (SDF)** from triangle meshes. Designed for contact mechanics in rigid-body simulation.
 
+<div align="center">
+<img src="assets/figures/scenario_schematic.png" width="500" alt="Ring-on-cube torsion scenario"/>
+</div>
+
 ## Features
 
 - **SDF construction** from OBJ meshes with configurable resolution and padding
