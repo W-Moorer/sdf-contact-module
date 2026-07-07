@@ -90,3 +90,66 @@ def _plot_torque_density(X_q, torques_per_point, R_i, R_o):
     ax.set_aspect('equal')
     plt.colorbar(sc, ax=ax, label='$dT_z$')
     return fig
+
+def save_convergence_plot(results, output_dir, suffix=''):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    labels = [r['label'] for r in results]
+    n_pts = np.array([r['num_quadrature_points'] for r in results])
+    errs = np.array([r['relative_error_Tz'] for r in results])
+    rsp_ana = results[0]['Rspin_analytic']
+    rsp_errs = np.abs(np.array([r['Rspin_numeric'] for r in results]) - rsp_ana) / rsp_ana
+
+    ax1.loglog(n_pts, errs, 'o-', color='#1f77b4', lw=2, markersize=8)
+    for i, l in enumerate(labels):
+        ax1.annotate(l, (n_pts[i], errs[i]), textcoords="offset points",
+                     xytext=(0, 10), ha='center', fontsize=8)
+    ref_rate = errs[0] * (n_pts[0] / n_pts) ** 1.0
+    ax1.loglog(n_pts, ref_rate, '--', color='gray', alpha=0.5, label='O(1/N) ref')
+    ax1.set_xlabel('number of quadrature points')
+    ax1.set_ylabel('relative torque error')
+    ax1.set_title('Torque Error vs Mesh Resolution')
+    ax1.legend(); ax1.grid(True, which='both', alpha=0.3)
+
+    ax2.semilogy(n_pts, rsp_errs, 's-', color='#d62728', lw=2, markersize=8)
+    for i, l in enumerate(labels):
+        ax2.annotate(l, (n_pts[i], rsp_errs[i]), textcoords="offset points",
+                     xytext=(0, 10), ha='center', fontsize=8)
+    ax2.set_xlabel('number of quadrature points')
+    ax2.set_ylabel('relative R_spin error')
+    ax2.set_title('Equivalent Radius Error vs Mesh Resolution')
+    ax2.grid(True, which='both', alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'figures', f'torque_error_vs_mesh_resolution{suffix}.png'),
+                dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+def save_sdf_convergence_plot(sdf_results, output_dir):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    res_list = sorted([r for r in sdf_results],
+                      key=lambda x: int(x['label'].replace('sdf_res','')))
+    resolutions = np.array([int(r['label'].replace('sdf_res','')) for r in res_list])
+    errs = np.array([r['relative_error_Tz'] for r in res_list])
+    rsp_errs = np.abs(np.array([r['Rspin_numeric'] for r in res_list])
+                      - res_list[0]['Rspin_analytic']) / res_list[0]['Rspin_analytic']
+
+    ax1.loglog(resolutions, errs, 'o-', color='#2ca02c', lw=2, markersize=8)
+    ref = errs[0] * (resolutions[0] / resolutions)
+    ax1.loglog(resolutions, ref, '--', color='gray', alpha=0.5, label='O(1/N) ref')
+    ax1.set_xlabel('SDF resolution')
+    ax1.set_ylabel('relative torque error')
+    ax1.set_title('Torque Error vs SDF Resolution')
+    ax1.legend(); ax1.grid(True, which='both', alpha=0.3)
+
+    ax2.semilogy(resolutions, rsp_errs, 's-', color='#9467bd', lw=2, markersize=8)
+    ax2.set_xlabel('SDF resolution')
+    ax2.set_ylabel('relative R_spin error')
+    ax2.set_title('Equivalent Radius Error vs SDF Resolution')
+    ax2.grid(True, which='both', alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(os.path.join(output_dir, 'figures', 'torque_error_vs_sdf_resolution.png'),
+                dpi=150, bbox_inches='tight')
+    plt.close(fig)

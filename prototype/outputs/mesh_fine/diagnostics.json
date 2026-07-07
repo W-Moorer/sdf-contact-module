@@ -1,0 +1,20 @@
+{
+  "label": "mesh_fine",
+  "N_numeric": 1245.32570198183,
+  "N_analytic": 1256.6370614359168,
+  "Tz_numeric": -313.584967381947,
+  "Tz_analytic": -318.34805556376557,
+  "relative_error_Tz": 0.014961888720769938,
+  "Rspin_numeric": 0.503619200796873,
+  "Rspin_analytic": 0.5066666666666666,
+  "Ft_residual": 8.201540429911298e-09,
+  "Ft_residual_normalized": 1.3171719521823477e-11,
+  "force_balance_error": 0.0,
+  "num_quadrature_points": 108,
+  "num_active_points": 108,
+  "R_i": 0.4,
+  "R_o": 0.6,
+  "mu": 0.5,
+  "obj_faces": 648,
+  "bottom_faces": 108
+}

@@ -1,0 +1,18 @@
+{
+  "label": "sdf_res128",
+  "N_numeric": 1256.6370614361267,
+  "N_analytic": 1256.6370614359168,
+  "Tz_numeric": -318.34543756994873,
+  "Tz_analytic": -318.34805556376557,
+  "relative_error_Tz": 8.223684018439835e-06,
+  "Rspin_numeric": 0.5066625000000001,
+  "Rspin_analytic": 0.5066666666666666,
+  "Ft_residual": 2.6923134076128054e-14,
+  "Ft_residual_normalized": 4.284949871740914e-17,
+  "force_balance_error": 0.0,
+  "num_quadrature_points": 5120,
+  "num_active_points": 5120,
+  "R_i": 0.4,
+  "R_o": 0.6,
+  "mu": 0.5
+}

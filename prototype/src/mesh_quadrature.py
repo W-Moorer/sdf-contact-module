@@ -1,5 +1,36 @@
 import numpy as np
 
+def load_obj_triangles(path):
+    verts = []
+    tris = []
+    with open(path) as f:
+        for line in f:
+            if line.startswith('v '):
+                verts.append([float(x) for x in line.strip().split()[1:]])
+            elif line.startswith('f '):
+                parts = line.strip().split()
+                idx = [int(p.split('/')[0]) - 1 for p in parts[1:]]
+                if len(idx) == 3:
+                    tris.append(idx)
+    verts = np.array(verts)
+    tris = np.array(tris)
+    return verts, tris
+
+def triangle_centroid_quadrature(verts, tris):
+    v = verts[tris]
+    X_q = v.mean(axis=1)
+    edges0 = v[:, 1] - v[:, 0]
+    edges1 = v[:, 2] - v[:, 0]
+    normals = np.cross(edges0, edges1)
+    areas = 0.5 * np.linalg.norm(normals, axis=1)
+    w_q = areas.copy()
+    tri_normals = normals / (np.linalg.norm(normals, axis=1, keepdims=True) + 1e-30)
+    return X_q, w_q, tri_normals, np.arange(len(tris))
+
+def select_bottom_face(X_q, tri_normals, tol=0.01):
+    mask = tri_normals[:, 2] < -(1.0 - tol)
+    return mask
+
 def annular_quadrature(R_i, R_o, n_radial=20, n_azimuthal=64):
     dr = (R_o - R_i) / n_radial
     dtheta = 2.0 * np.pi / n_azimuthal
@@ -25,7 +56,3 @@ def annular_quadrature(R_i, R_o, n_radial=20, n_azimuthal=64):
             idx += 1
 
     return np.array(X_q), np.array(w_q), np.array(tri_id)
-
-def bottom_face_selector(X_q, tri_normals, face_centers):
-    mask = np.abs(tri_normals[:, 2] + 1.0) < 1e-6
-    return mask
