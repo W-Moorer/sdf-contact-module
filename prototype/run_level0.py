@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Level 0: Analytic plane SDF validation — ring-on-cube torsion."""
+"""Level 0: Analytic plane SDF validation — ring-on-cube torsion.
 
-import sys, os
+Runs analytic quadrature + all OBJ mesh variants and generates
+convergence plot.
+"""
+
+import sys, os, json, numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
-from src.scenes.ring_on_cube_torsion import run_ring_on_cube_torsion
+from src.scenes.ring_on_cube_torsion import run_all_comparisons
+from src.visualization import save_convergence_plot
 
 if __name__ == '__main__':
-    diag = run_ring_on_cube_torsion(output_dir='outputs/ring_cube_level0')
-    print("\nAll figures saved to outputs/ring_cube_level0/figures/")
+    results = run_all_comparisons('outputs')
+
+    print("\nGenerating convergence plot...")
+    save_convergence_plot(results, 'outputs/ring_cube_level0')
+
+    print("\nAll outputs saved to outputs/")

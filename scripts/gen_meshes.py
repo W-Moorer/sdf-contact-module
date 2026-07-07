@@ -29,15 +29,14 @@ def _check_max_edge(vertices, faces, label):
             l = np.linalg.norm(a - b)
             if l > max_len:
                 max_len = l
-    print(f"  {label}: max edge length = {max_len:.4f}  (limit: 0.2)  {'OK' if max_len <= 0.21 else 'WARNING'}")
+    ok = max_len <= 0.201
+    print(f"  {label}: max edge = {max_len:.4f}  {'OK' if ok else 'WARNING'}")
     return max_len
 
 def generate_cube(path, half_width=2.0, max_edge=0.2):
-    # Cube centered at (0, 0, -half_width) so top face is at z=0
-    # Triangle diagonal ~ sqrt(2) * spacing, so spacing <= max_edge / sqrt(2)
     spacing = max_edge / np.sqrt(2)
     n = max(int(np.ceil(2 * half_width / spacing)), 2)
-    print(f"Cube: half_width={half_width}, segments per side={n}")
+    print(f"Cube: half_width={half_width}, segments={n}")
 
     verts = []
     faces = []
@@ -70,29 +69,22 @@ def generate_cube(path, half_width=2.0, max_edge=0.2):
                     faces.append([i1, i3, i2])
 
     verts = np.array(verts)
-    verts[:, 2] -= half_width  # shift so top face is at z=0
+    verts[:, 2] -= half_width
     faces = np.array(faces)
     _write_obj(path, verts, faces)
     _check_max_edge(verts, faces, "cube")
-    print(f"  -> {len(verts)} vertices, {len(faces)} triangles")
+    print(f"  -> {len(verts)} verts, {len(faces)} tris")
     return verts, faces
 
-def generate_hollow_cylinder(path, R_i=0.4, R_o=0.6, height=0.5, max_edge=0.2):
-    circum = 2 * np.pi * R_o
-    # Diagonal of quad on annular face = sqrt(dr^2 + (r*dθ)^2)
-    # To bound diagonal ≤ max_edge, use spacing_circum ≤ max_edge/√2
-    spacing = max_edge / np.sqrt(2)
-    n_az = max(int(np.ceil(2 * np.pi * R_o / spacing)), 8)
-    n_rad = max(int(np.ceil((R_o - R_i) / spacing)), 2)
-    # Diagonal on cylindrical wall = sqrt((dz)² + (r*dθ)²)
-    n_vert = max(int(np.ceil(height / spacing)), 2)
-    print(f"Hollow cylinder: R_i={R_i}, R_o={R_o}, height={height}, "
+def generate_hollow_cylinder(path, R_i=0.4, R_o=0.6, height=0.5,
+                              n_az=27, n_rad=2, n_vert=4):
+    print(f"Hollow cylinder ({os.path.basename(path)}): "
           f"n_az={n_az}, n_rad={n_rad}, n_vert={n_vert}")
 
     verts = []
     faces = []
 
-    def add_cylindrical_surface(r, sign, flip=False):
+    def add_cylindrical_surface(r, flip=False):
         base = len(verts)
         for k in range(n_vert + 1):
             z = k * height / n_vert
@@ -115,8 +107,8 @@ def generate_hollow_cylinder(path, R_i=0.4, R_o=0.6, height=0.5, max_edge=0.2):
                     faces.append([i0, i1, i2])
                     faces.append([i1, i3, i2])
 
-    add_cylindrical_surface(R_i, -1, flip=True)
-    add_cylindrical_surface(R_o, 1, flip=False)
+    add_cylindrical_surface(R_i, flip=True)
+    add_cylindrical_surface(R_o, flip=False)
 
     def add_annular_face(z, flip=False):
         base = len(verts)
@@ -148,20 +140,38 @@ def generate_hollow_cylinder(path, R_i=0.4, R_o=0.6, height=0.5, max_edge=0.2):
     faces = np.array(faces)
     _write_obj(path, verts, faces)
     _check_max_edge(verts, faces, "hollow_cylinder")
-    print(f"  -> {len(verts)} vertices, {len(faces)} triangles")
+    print(f"  -> {len(verts)} verts, {len(faces)} tris")
     return verts, faces
+
+
+# ---- density presets: (label, n_az, n_rad, n_vert, max_edge_target) ----
+CYLINDER_PRESETS = [
+    ("coarse",   12, 1, 2, 0.4),
+    ("medium",   20, 2, 3, 0.25),
+    ("fine",     27, 2, 4, 0.2),    # matches original constraint
+    ("dense",    40, 3, 6, 0.12),
+    ("very_dense", 60, 4, 10, 0.08),
+]
+
 
 if __name__ == '__main__':
     out_dir = os.path.join(os.path.dirname(__file__), '..', 'models')
     os.makedirs(out_dir, exist_ok=True)
 
     print("=" * 60)
-    print("Generating meshes for SDF contact validation")
+    print("Generating OBJ meshes for SDF contact validation")
     print("=" * 60)
 
-    v_cube, f_cube = generate_cube(os.path.join(out_dir, 'cube.obj'))
-    print()
-    v_cyl, f_cyl = generate_hollow_cylinder(
-        os.path.join(out_dir, 'hollow_cylinder.obj'))
-    print()
-    print("Done. Meshes saved to:", out_dir)
+    # --- Cube (single density) ---
+    print("\n--- Cube ---")
+    generate_cube(os.path.join(out_dir, 'cube.obj'))
+
+    # --- Hollow cylinder (multiple densities) ---
+    print("\n--- Hollow cylinder variants ---")
+    for label, n_az, n_rad, n_vert, target in CYLINDER_PRESETS:
+        fname = f"hollow_cylinder_{label}.obj"
+        generate_hollow_cylinder(
+            os.path.join(out_dir, fname),
+            n_az=n_az, n_rad=n_rad, n_vert=n_vert)
+
+    print(f"\nDone. {len(CYLINDER_PRESETS)} cylinder variants saved to: {out_dir}")
