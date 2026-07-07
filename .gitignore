@@ -1,0 +1,17 @@
+# opencode configuration
+.opencode/
+opencode.json
+
+# design notes (Chinese)
+reference/
+docs/
+
+# build artifacts
+build/
+
+# generated SDF files (large binary)
+*.sdf
+
+# Python cache
+__pycache__/
+*.pyc
