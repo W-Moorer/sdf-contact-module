@@ -5,3 +5,7 @@ opencode.json
 # design notes (Chinese)
 reference/
 docs/
+
+# Python cache
+__pycache__/
+*.pyc
