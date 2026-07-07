@@ -11,6 +11,36 @@ A standalone C++ plugin for building, storing, and querying **Signed Distance Fi
 - **OpenMP** parallel acceleration (optional CUDA support)
 - **Eigen3** header-only dependency — fully standalone (no NexDyn core required)
 
+## Validation: Torsional Friction on Annular Contact
+
+A Python theory prototype validates that **trilinear SDF + per-point friction integration** produces the correct non-zero torsional friction torque on a symmetric annular contact patch — a result that is lost when forces are averaged over the patch.
+
+<div align="center">
+<table>
+<tr>
+  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/contact_pressure_top.png" width="280" alt="Contact pressure top view"/></td>
+  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/friction_vectors_top.png" width="280" alt="Friction vectors top view"/></td>
+  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/torque_density_top.png" width="280" alt="Torque density top view"/></td>
+</tr>
+<tr>
+  <td align="center"><b>Annular contact patch</b><br/>Uniform pressure on ring</td>
+  <td align="center"><b>Friction traction vectors</b><br/>Azimuthal direction → pure torque</td>
+  <td align="center"><b>Torque density</b><br/>Same-sign everywhere → non-zero total</td>
+</tr>
+</table>
+</div>
+
+**Key result**: Although the net tangential force integrates to zero (perfect symmetry), the torsional friction torque is non-zero and converges to the analytic solution:
+
+| Metric | Value | Target |
+|--------|-------|--------|
+| Relative torque error | **3.3e-05** (0.0033%) | < 0.1% |
+| Tangential force residual | **2.0e-17** (≈ 0) | symmetry verified |
+
+<div align="center">
+<img src="prototype/outputs/ring_cube_level0/figures/torque_error_vs_mesh_resolution.png" width="500" alt="Mesh convergence"/>
+</div>
+
 ## Repository Structure
 
 ```
@@ -19,6 +49,7 @@ sdf-contact-module/
 │   ├── include/SdfOracle/   # Public headers
 │   ├── src/                 # Implementation
 │   └── app/                 # SdfOracleDemo executable
+├── prototype/               # Python contact integration prototype
 ├── models/                  # 3D mesh files (OBJ)
 ├── wiki/                    # Project documentation
 └── docs/                    # Design notes
@@ -67,8 +98,6 @@ cmake -B build -S plugins/SdfOracle \
 ./SdfOracleDemo --obj <mesh.obj> --resolution <res> --out <prefix>
 ```
 
-This generates a dense `.sdf` file with trilinear-interpolatable signed distance values.
-
 ### Query Modes
 
 | Mode | Description |
@@ -93,10 +122,6 @@ Header (128 bytes):
 Payload (dense):
   phi0[N], n0[N×3], H0[N×6], witness0[N×3]
 ```
-
-## Theory Validation
-
-A Python contact integration prototype is planned (see `docs/参考意见v1.md`) to validate that trilinear SDF + local friction integration produces non-zero torsional friction torque on symmetric annular contact patches — a key result often lost by naive averaged-force methods.
 
 ## Documentation
 
