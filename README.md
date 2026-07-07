@@ -18,9 +18,9 @@ A Python theory prototype validates that **trilinear SDF + per-point friction in
 <div align="center">
 <table>
 <tr>
-  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/contact_pressure_top.png" width="280" alt="Contact pressure top view"/></td>
-  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/friction_vectors_top.png" width="280" alt="Friction vectors top view"/></td>
-  <td><img src="prototype/outputs/ring_cube_level1/level0_analytic/figures/torque_density_top.png" width="280" alt="Torque density top view"/></td>
+  <td><img src="assets/figures/contact_pressure_top.png" width="280" alt="Contact pressure top view"/></td>
+  <td><img src="assets/figures/friction_vectors_top.png" width="280" alt="Friction vectors top view"/></td>
+  <td><img src="assets/figures/torque_density_top.png" width="280" alt="Torque density top view"/></td>
 </tr>
 <tr>
   <td align="center"><b>Annular contact patch</b><br/>Uniform pressure on ring</td>
@@ -38,7 +38,7 @@ A Python theory prototype validates that **trilinear SDF + per-point friction in
 | Tangential force residual | **2.0e-17** (≈ 0) | symmetry verified |
 
 <div align="center">
-<img src="prototype/outputs/ring_cube_level0/figures/torque_error_vs_mesh_resolution.png" width="500" alt="Mesh convergence"/>
+<img src="assets/figures/torque_error_vs_mesh_resolution.png" width="500" alt="Mesh convergence"/>
 </div>
 
 ## Repository Structure
