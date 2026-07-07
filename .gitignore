@@ -1,3 +1,7 @@
 # opencode configuration
 .opencode/
 opencode.json
+
+# design notes (Chinese)
+reference/
+docs/
