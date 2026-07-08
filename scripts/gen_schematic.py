@@ -69,6 +69,10 @@ def generate_2d(path):
     ax.add_patch(contact_left)
     ax.add_patch(contact_right)
 
+    # --- Centerline (axis of symmetry, limited to cylinder height) ---
+    ax.plot([0, 0], [z_cyl_bot - 0.1, z_cyl_top + 0.1],
+            color='#888888', lw=0.8, ls='--', zorder=1)
+
     # --- z-axis (left side) ---
     ax.annotate('', xy=(-hw - 0.2, 1.5), xytext=(-hw - 0.2, -4.5),
                 arrowprops=dict(arrowstyle='->', color='black', lw=1.5), zorder=10)
@@ -84,18 +88,102 @@ def generate_2d(path):
     _draw_dimension(ax, (0, y_ri), (R_i, y_ri), r'$R_i$', offset=(0, 0.12))
 
     # --- Dimension: R_o (right side, above R_i) ---
-    y_ro = z_cyl_top + 0.65
+    y_ro = z_cyl_top + 0.85
     _draw_dimension(ax, (0, y_ro), (R_o, y_ro), r'$R_o$', offset=(0, 0.12))
 
     # --- Dimension: cylinder height h (right side) ---
-    x_h = R_o + 0.4
+    x_h = R_o + 0.55
     _draw_dimension(ax, (x_h, z_cyl_bot), (x_h, z_cyl_top), r'$h$',
                     offset=(0.15, 0), color='#365897', fontsize=14)
 
-    # --- Dimension: penetration delta (right side, further right) ---
-    x_d = R_o + 1.0
-    _draw_dimension(ax, (x_d, z_cyl_top), (x_d, 0), r'$\delta$',
-                    offset=(0.15, 0), color='#a50000', fontsize=14)
+    # --- Detail indicator on main axes (shows inset zoom region) ---
+    detail_rect = plt.Rectangle(
+        (0.32, -0.12), 0.36, 0.24,
+        linewidth=1.5, edgecolor='#b85450', facecolor='none',
+        linestyle='--', zorder=10)
+    ax.add_patch(detail_rect)
+    ax.text(0.50, 0.18, 'Detail', fontsize=9, color='#b85450',
+            ha='center', va='bottom', zorder=10, style='italic')
+
+    # --- δ extension lines on main diagram ---
+    # Penetration is 0.002 (invisible at this scale); use extension lines
+    # from cube surface and cylinder bottom to a reference column
+    x_d_ref = R_o + 0.85
+    ax.plot([R_o + 0.03, x_d_ref + 0.06], [0, 0],
+            color='#a50000', lw=0.5, ls=':', zorder=5)
+    ax.plot([R_o + 0.03, x_d_ref + 0.06], [z_cyl_bot, z_cyl_bot],
+            color='#a50000', lw=0.5, ls=':', zorder=5)
+    # Small δ ticks at the reference column
+    ax.plot([x_d_ref - 0.03, x_d_ref + 0.03], [0, 0],
+            color='#a50000', lw=1.0, zorder=10)
+    ax.plot([x_d_ref - 0.03, x_d_ref + 0.03], [z_cyl_bot, z_cyl_bot],
+            color='#a50000', lw=1.0, zorder=10)
+    ax.text(x_d_ref + 0.1, z_cyl_bot / 2, r'$\delta$',
+            fontsize=12, color='#a50000', ha='left', va='center')
+
+    # --- Inset: zoom on contact region showing penetration δ ---
+    ins_ax = fig.add_axes([0.70, 0.70, 0.26, 0.26])
+
+    # Visual-coordinate layout (penetration exaggerated for clarity)
+    vis_pen = 0.08          # exaggerated penetration in visual units
+    cube_top_y = 0.0        # cube surface at y = 0
+    cube_bot_y = -0.40      # bottom of visible cube region
+    cyl_top_y = 0.38        # top of visible cylinder region
+    cyl_bot_y = cube_top_y - vis_pen  # cylinder bottom (below surface)
+    x_L, x_R = 0.12, 0.62   # cylinder wall horizontal extent
+    cube_xL = 0.0            # cube extends beyond cylinder on both sides
+    cube_xR = 0.80
+
+    # Cube body (green)
+    ins_ax.add_patch(plt.Rectangle(
+        (cube_xL, cube_bot_y), cube_xR - cube_xL, -cube_bot_y,
+        facecolor='#d5e8d4', edgecolor='#5a7247', lw=1.5, zorder=2))
+
+    # Cylinder wall (blue) — spans from cyl_bot_y to cyl_top_y
+    ins_ax.add_patch(plt.Rectangle(
+        (x_L, cyl_bot_y), x_R - x_L, cyl_top_y - cyl_bot_y,
+        facecolor='#b4c7e7', edgecolor='#365897', lw=1.5, zorder=3))
+
+    # Contact patch (red thin strip at the interface)
+    ins_ax.add_patch(plt.Rectangle(
+        (x_L, cube_top_y - vis_pen * 0.25), x_R - x_L, vis_pen * 0.5,
+        facecolor='#f8cecc', edgecolor='#b85450', lw=2.0, zorder=4))
+
+    # z = 0 reference dashed line (cube surface)
+    ins_ax.axhline(y=cube_top_y, color='#5a7247', lw=0.8, ls='--', zorder=1)
+    ins_ax.text(cube_xR + 0.01, cube_top_y, r'$z=0$',
+                fontsize=8, color='#5a7247', va='center', ha='left')
+
+    # δ dimension: extension lines + double-headed arrow
+    dim_x = x_R + 0.06
+    ext_left = x_R + 0.01
+    ext_right = dim_x + 0.03
+    # Extension line from z = 0
+    ins_ax.plot([ext_left, ext_right], [cube_top_y, cube_top_y],
+                color='#a50000', lw=0.5, ls=':', zorder=5)
+    # Extension line from cylinder bottom (penetrated depth)
+    ins_ax.plot([ext_left, ext_right], [cyl_bot_y, cyl_bot_y],
+                color='#a50000', lw=0.5, ls=':', zorder=5)
+    # Dimension arrow
+    ins_ax.annotate('', xy=(dim_x, cyl_bot_y), xytext=(dim_x, cube_top_y),
+                    arrowprops=dict(arrowstyle='<->', color='#a50000', lw=1.2),
+                    zorder=10)
+    # Tick marks at arrow endpoints
+    for yy in [cube_top_y, cyl_bot_y]:
+        ins_ax.plot([dim_x - 0.015, dim_x + 0.015], [yy, yy],
+                    color='#a50000', lw=1.0, zorder=10)
+    # δ label
+    ins_ax.text(dim_x + 0.025, (cube_top_y + cyl_bot_y) / 2, r'$\delta$',
+                fontsize=14, color='#a50000', ha='left', va='center',
+                fontweight='bold')
+
+    ins_ax.set_xlim(-0.05, 0.88)
+    ins_ax.set_ylim(-0.48, 0.46)
+    ins_ax.tick_params(labelsize=7, pad=1)
+    ins_ax.set_title(r'Detail ($\delta$ exaggerated)', fontsize=9, pad=3, color='#666666')
+    for spine in ins_ax.spines.values():
+        spine.set_edgecolor('#b85450')
+        spine.set_linewidth(1.5)
 
     # --- Rotation arrow (above cylinder) ---
     r_arc = R_i * 0.7
@@ -126,12 +214,12 @@ def generate_2d(path):
                 arrowprops=dict(arrowstyle='->', color='#b85450', lw=1.5),
                 bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='#b85450', alpha=0.9))
 
-    # --- Normal force arrows ---
+    # --- Normal force arrows (upward: cube pushes cylinder in +z) ---
     for xf in [R_i + 0.06, (R_i + R_o) / 2, R_o - 0.06]:
-        ax.annotate('', xy=(xf, z_cyl_bot - 0.2), xytext=(xf, z_cyl_bot - 0.01),
+        ax.annotate('', xy=(xf, 0.18), xytext=(xf, z_cyl_bot - 0.01),
                     arrowprops=dict(arrowstyle='->', color='#d6604d', lw=1.5), zorder=10)
-    ax.text(R_o * 0.5, z_cyl_bot - 0.32, r'$f_n$', fontsize=13, color='#d6604d',
-            ha='center', zorder=10)
+    ax.text(0.72, 0.10, r'$f_n$', fontsize=13, color='#d6604d',
+            ha='left', va='center', zorder=10)
 
     ax.set_xlim(-2.8, 3.5)
     ax.set_ylim(-4.8, 2.0)
@@ -139,7 +227,6 @@ def generate_2d(path):
     ax.set_axis_off()
     ax.set_title('(a) Cross-Section (xz-plane)', fontsize=15, pad=20)
 
-    plt.tight_layout()
     fig.savefig(path, dpi=200, bbox_inches='tight', facecolor='white')
     plt.close(fig)
     print(f"Saved: {path}")
