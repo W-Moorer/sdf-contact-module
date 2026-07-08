@@ -36,6 +36,8 @@ class SDFContactEngine:
         self._aabb_a = {}
         self._aabb_b = {}
         self._narrow_margin = 0.01
+        self.__bvh = {}
+        self.__sdf_offset = {}
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
                       aabb_b_half=None, narrow_margin=0.01,
@@ -51,14 +53,10 @@ class SDFContactEngine:
 
     @property
     def _bvh(self):
-        if not hasattr(self, '__bvh'):
-            self.__bvh = {}
         return self.__bvh
 
     @property
     def _sdf_offset(self):
-        if not hasattr(self, '__sdf_offset'):
-            self.__sdf_offset = {}
         return self.__sdf_offset
 
     def _check_broad_phase(self, cp, state, model):
@@ -152,7 +150,7 @@ class SDFContactEngine:
         penetration = max(0.0, -g_min)
 
         eps = cp.activation_distance if activation_distance is None else activation_distance
-        active_count = int(np.sum(valid & (g <= eps)))
+        active_count = int(np.sum(valid & (g < 0.0)))
 
         # normal relative velocity at the minimum-gap quadrature point
         body_a = model.bodies[cp.body_a_id]
@@ -256,7 +254,7 @@ class SDFContactEngine:
             Y_local = Y_local - sdf_offset[None, :]
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
 
-        valid_mask = valid & (k_n * np.maximum(epsilon - g, 0.0)**k_order > 1e-30)
+        valid_mask = valid & (k_n * np.maximum(-g, 0.0)**k_order > 1e-30)
         if not np.any(valid_mask):
             return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
 
@@ -266,7 +264,7 @@ class SDFContactEngine:
         gv = g[valid_mask]
         rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
-        p = k_n * np.maximum(epsilon - gv, 0.0)**k_order
+        p = k_n * np.maximum(-gv, 0.0)**k_order
 
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.
         rg = (RB @ rg_local.T).T
@@ -281,13 +279,13 @@ class SDFContactEngine:
         fn = p[:, None] * rg
         p_hat = p * gn
 
-        # Normal damping force: active as long as gap < epsilon (even after penalty force ends)
+        # Normal damping force: active when penetrated (g < 0)
         if c_n > 0:
             uA_damp = vA[None, :] + np.cross(wA[None, :], off_A)
             off_B_damp = xw_v - rB[None, :]
             uB_damp = vB[None, :] + np.cross(wB[None, :], off_B_damp)
             vn = np.sum((uA_damp - uB_damp) * rg, axis=1)
-            damp_active = gv < epsilon
+            damp_active = gv < 0.0
             fd = c_n * (-vn)[:, None] * rg * damp_active[:, None]
             fn += fd
 

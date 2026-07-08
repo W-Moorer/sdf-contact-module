@@ -30,9 +30,16 @@ def load_quad(path):
     return QuadratureMesh(np.array(X_q), np.array(w_q))
 
 qm = load_quad(os.path.join(SC, '..', 'models', 'rmd_ring.obj'))
+# Apply Frame 4 offset: Body2.Torus1.BaseGSurfacePatchRefMarker pos=[-0.099,-0.099,-0.024]
+# GSurface NODES in marker frame → transforms to body COM frame
+qm.X_q += np.array([-0.099, -0.099, -0.024])
+
 eng = SDFContactEngine(); cp_obj = list(model.contacts.values())[0]
 sdf = TrilinearSDFGrid(os.path.join(SC, '..', 'models', 'rmd_box_res128.sdf'))
-eng.register_pair(cp_obj.id, qm, sdf, aabb_b_half=[0.23,0.23,0.5], narrow_margin=0.2)
+# Apply Frame 3 offset: Body1.Box1.BaseGSurfacePatchRefMarker pos=[-0.23,-0.23,-0.08]
+# SDF query in body COM → transforms to SDF native (marker) frame
+eng.register_pair(cp_obj.id, qm, sdf, aabb_b_half=[0.23,0.23,0.5],
+                  narrow_margin=1.0, marker_offset_b=np.array([-0.23, -0.23, -0.08]))
 
 state = State(model); idx4 = state.body_idx(4)
 intg = BackwardEulerIntegrator(model, contact_engine=eng, max_iter=50, tol=1e-8,
@@ -45,7 +52,7 @@ t0 = _time.perf_counter(); t_arr, z_arr, vz_arr = [], [], []
 def cb(s, i, t):
     t_arr.append(s.t); z_arr.append(s.r[idx4,2].copy()); vz_arr.append(s.v[idx4,2].copy())
     if len(t_arr) % 500 == 0: print(f'  step{len(t_arr):4d} t={s.t:.4f} z={s.r[idx4,2]*1000:.1f}mm vz={s.v[idx4,2]:.4f}')
-intg.integrate(state, 0.5, 0.001, callback=cb)
+intg.integrate(state, 1.0, 0.001, callback=cb)
 t = _time.perf_counter() - t0
 t_arr, z_arr, vz_arr = np.array(t_arr), np.array(z_arr), np.array(vz_arr)
 print(f'{len(t_arr)} steps in {t:.1f}s')

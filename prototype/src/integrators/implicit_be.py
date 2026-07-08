@@ -474,13 +474,11 @@ class BackwardEulerIntegrator:
         try:
             z = np.concatenate([V0, np.zeros(nc)])
             R = self._residual(z, q0, dt)
-            use_fd = self.contact_engine is not None and self._cache_any_contact
-
             for iteration in range(self.max_iter):
                 err = np.max(np.abs(R)) if len(R) else 0.0
                 if err < self.tol:
                     break
-                K = self._tangent(z, q0, dt, R_cache=R, use_fd=(use_fd and iteration == 0))
+                K = self._tangent(z, q0, dt, R_cache=R, use_fd=False)
                 dz_raw = self._solve_kkt(K, -R)
                 alpha = self._line_search(z, dz_raw, q0, dt, R0=R) if self.line_search else 1.0
                 z = z + alpha * dz_raw

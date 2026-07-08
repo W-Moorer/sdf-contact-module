@@ -180,8 +180,8 @@ class RMDToIR:
                 # BPEN converts by length_scale (mm → m)
                 activation_distance=rc.boundary_penetration * ls,
                 contact_mode='A_quad_B_sdf',
-                # Damping C converts by length_scale (RMD: N·s/mm → N·s/m)
-                quadrature_settings={'regularizer': 1e-4, 'damping': rc.damping * ls},
+                # Damping C: RMD N·s/mm → SI N·s/m (C/v_mm = C/(v_m/0.001) = C*1000)
+                quadrature_settings={'regularizer': 1e-4, 'damping': rc.damping / ls},
                 k_order=k_order_raw,
             )
             model.add_contact(cp)
