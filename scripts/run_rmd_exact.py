@@ -45,23 +45,50 @@ intg = BackwardEulerIntegrator(model, contact_engine=eng, max_iter=50, tol=1e-8,
 intg._release_gap = 1e-5; intg._stable_vn_tol = 1e-3
 
 print('Running...')
-t0 = _time.perf_counter(); t_arr, z_arr, vz_arr = [], [], []
+t0 = _time.perf_counter(); t_arr, z_arr, vz_arr, fz_arr = [], [], [], []
 def cb(s, i, t):
     t_arr.append(s.t); z_arr.append(s.r[idx4,2].copy()); vz_arr.append(s.v[idx4,2].copy())
+    Q = eng.compute_Q_contact(model, s, active_ids={cp_obj.id})
+    fz_arr.append(Q[6*1 + 2])
     if len(t_arr) % 500 == 0: print(f'  step{len(t_arr):4d} t={s.t:.4f} z={s.r[idx4,2]*1000:.1f}mm vz={s.v[idx4,2]:.4f}')
 intg.integrate(state, 1.0, 0.001, callback=cb)
 t = _time.perf_counter() - t0
-t_arr, z_arr, vz_arr = np.array(t_arr), np.array(z_arr), np.array(vz_arr)
+t_arr, z_arr, vz_arr, fz_arr = np.array(t_arr), np.array(z_arr), np.array(vz_arr), np.array(fz_arr)
 print(f'{len(t_arr)} steps in {t:.1f}s')
+z_mm = z_arr * 1000
 
 # Plot
 rd_t, rd_z = np.loadtxt(os.path.join(SC, '..', 'reference_csv', 'ring_cube_collision', 'Bodies_Body2_Pos_TZ.csv'), delimiter=',', skiprows=1, unpack=True)
-rd_vz = np.loadtxt(os.path.join(SC, '..', 'reference_csv', 'ring_cube_collision', 'Bodies_Body2_Vel_TZ.csv'), delimiter=',', skiprows=1, unpack=True)[1]
 
 fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-ax = axes[0]; ax.plot(rd_t, rd_z, 'b-', lw=1.5, label='RecurDyn'); ax.plot(t_arr, z_arr*1000, 'r--', lw=1.2, label='BE (RMD params)'); ax.axhline(y=130, color='k', ls=':', lw=0.8); ax.set_xlabel('t(s)'); ax.set_ylabel('Z(mm)'); ax.set_title('Ring Z Position'); ax.legend(); ax.grid(alpha=0.3)
-ax = axes[1]; ax.plot(rd_t, rd_z, 'b-', lw=1.5, label='RecurDyn'); ax.plot(t_arr, z_arr*1000, 'r--', lw=1.2, label='BE'); ax.axhline(y=130, color='k', ls=':'); ax.set_xlim(0.12, 0.35); ax.set_ylim(60, 170); ax.set_xlabel('t(s)'); ax.set_title('Contact Phase'); ax.legend(); ax.grid(alpha=0.3)
-ax = axes[2]; ax.plot(rd_t, rd_vz, 'b-', lw=1.5, label='RecurDyn'); ax.plot(t_arr, vz_arr, 'g--', lw=1.2, label='BE'); ax.axhline(y=0, color='k', ls=':'); ax.set_xlabel('t(s)'); ax.set_ylabel('Vz(m/s)'); ax.set_title('Z Velocity'); ax.legend(); ax.grid(alpha=0.3)
+
+# Left: Z position full time
+ax = axes[0]
+ax.plot(rd_t, rd_z, 'b-', lw=1.5, label='RecurDyn')
+ax.plot(t_arr, z_mm, 'r--', lw=1.2, label='BE (RMD params)')
+ax.axhline(y=65, color='b', ls=':', lw=1.0, alpha=0.5, label='Eq (RD 65mm)')
+ax.axhline(y=64.8, color='r', ls=':', lw=1.0, alpha=0.5, label='Eq (BE 64.8mm)')
+ax.set_xlabel('t(s)'); ax.set_ylabel('Z (mm)'); ax.set_title('Ring Z Position')
+ax.legend(fontsize=8); ax.grid(alpha=0.3)
+
+# Middle: Contact phase zoom
+ax = axes[1]
+ax.plot(rd_t, rd_z, 'b-', lw=1.5, label='RecurDyn')
+ax.plot(t_arr, z_mm, 'r--', lw=1.2, label='BE')
+ax.axhline(y=65, color='b', ls=':', lw=1.0, alpha=0.5)
+ax.axhline(y=64.8, color='r', ls=':', lw=1.0, alpha=0.5)
+ax.set_xlim(0.12, 0.35); ax.set_ylim(60, 170)
+ax.set_xlabel('t(s)'); ax.set_ylabel('Z (mm)'); ax.set_title('Contact Phase (zoom)')
+ax.legend(fontsize=8); ax.grid(alpha=0.3)
+
+# Right: Contact force Fz
+ax = axes[2]
+ax.plot(t_arr, fz_arr, 'r-', lw=1.2, label='BE Contact Fz')
+ax.axhline(y=25.6, color='k', ls=':', lw=1.0, alpha=0.7, label='Gravity mg=25.6N')
+ax.set_xlabel('t(s)'); ax.set_ylabel('Contact Force Fz (N)'); ax.set_title('Contact Force')
+ax.legend(fontsize=8); ax.grid(alpha=0.3)
+ax.set_ylim(0, 500)
+
 plt.tight_layout()
 plt.savefig(os.path.join(SC, '..', 'assets', 'validation', 'be_rmd_exact.png'), dpi=150); plt.close()
-print(f'Plot saved. Final z={z_arr[-1]*1000:.1f}mm (Ref={rd_z[-1]:.1f}mm)')
+print(f'Plot saved. Final z={z_mm[-1]:.1f}mm (Ref={rd_z[-1]:.1f}mm), final Fz={fz_arr[-1]:.1f}N')
