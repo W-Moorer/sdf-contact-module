@@ -264,6 +264,9 @@ class SDFContactEngine:
         gv = g[valid_mask]
         rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
+        # k_n = K_RMD / ls^KORDER (total force coeff for A=1). Normalize by actual area.
+        total_area = max(np.sum(quad_mesh.w_q), 1e-30)
+        k_n = k_n / total_area
         p = k_n * np.maximum(-gv, 0.0)**k_order
 
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.

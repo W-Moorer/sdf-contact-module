@@ -629,13 +629,13 @@ class BackwardEulerIntegrator:
             except (KeyError, IndexError):
                 vel = 1.0
             delta_est = max(vel * dt, 1e-10)
+            # With F = (k_n/A)*δ^k_order*A = k_n*δ^k_order:
+            # For any k_order: ∂F/∂V = k_n * k_order * δ^(k_order-1) * dt
             if k_order == 1:
-                stiff = k_n * area * dt
+                stiff = k_n * dt
             else:
-                # ∂F/∂V = k_n * k_order * δ^(k_order-1) * area * dt
-                stiff = k_n * k_order * (delta_est ** (k_order - 1)) * area * dt
-                # Add small regularization for δ→0 case
-                stiff += 1e3 * area * dt
+                stiff = k_n * k_order * (delta_est ** (k_order - 1)) * dt
+                stiff += 5e2  # regularization for δ→0 where ∂F/∂V→0
             damp = c_n * area
             total = stiff + damp
             if ba is None:
