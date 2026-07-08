@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DOCUMENT>
+	<OBJECT keyword="RIGID_BODY" name="Professional" type="Body">
+		<ENTITIES>
+			<ENTITY name="Body1" type="BOOL">TRUE</ENTITY>
+			<ENTITY name="Body2" type="BOOL">TRUE</ENTITY>
+		</ENTITIES>
+		<ARRAYPROPERTY arraysize="4">
+			<PROPERTY keyword="Position" type="BOOL">TRUE</PROPERTY>
+			<PROPERTY keyword="Velocity" type="BOOL">TRUE</PROPERTY>
+			<PROPERTY keyword="Acceleration" type="BOOL">TRUE</PROPERTY>
+			<PROPERTY keyword="Energy" type="BOOL">TRUE</PROPERTY>
+		</ARRAYPROPERTY>
+	</OBJECT>
+	<OBJECT keyword="GGEOM_CONTACT_GROUP" name="Professional" type="Contact">
+		<ENTITIES>
+			<ENTITY name="GeoSurContact1" type="BOOL">TRUE</ENTITY>
+		</ENTITIES>
+		<ARRAYPROPERTY arraysize="2">
+			<PROPERTY keyword="Contact Force" type="BOOL">TRUE</PROPERTY>
+			<PROPERTY keyword="Contact Point" type="BOOL">TRUE</PROPERTY>
+		</ARRAYPROPERTY>
+	</OBJECT>
+	<OBJECT keyword="FIXED_JOINT" name="Professional" type="Joint">
+		<ENTITIES>
+			<ENTITY name="Fixed1" type="BOOL">TRUE</ENTITY>
+		</ENTITIES>
+		<ARRAYPROPERTY arraysize="1">
+			<PROPERTY keyword="Reaction Force" type="BOOL">TRUE</PROPERTY>
+		</ARRAYPROPERTY>
+	</OBJECT>
+</DOCUMENT>

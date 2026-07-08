@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<AnalysisResultFiles rpmxver="1000" rdsolverver="10.1.11516.0" os="WINDOWS" filename="E:\workspace\NexDyn\assets\models\齿轮-齿轮-一级转动传动\First-stage gear transmission_03\First-stage gear transmission">
+    <Command ID="1" type="Dynamic" StartTime="0" text="SIM/DYN, END = 1.0, STEP = 1000">
+        <!--File type="rplt" path=".\First-stage gear transmission.rplt" datatype="New"-->
+        <File type="ran" path=".\First-stage gear transmission.ran" datatype="New" />
+    </Command>
+    <Command ID="2" type="Stop" StartTime="1" text="STOP" />
+</AnalysisResultFiles>

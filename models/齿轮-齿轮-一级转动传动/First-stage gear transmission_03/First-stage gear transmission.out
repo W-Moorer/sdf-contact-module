@@ -1,0 +1,50 @@
+ Data Set Title:
+ 
+  Static Analysis                                                               
+  
+ 
+                 Maximum displacement error =
+ 
+                 Convergence was achieved in
+ 
+                   Residual error less than
+ 
+ INITIAL CONDITIONS
+ 
+                           Rectangular Coordinates
+                      (Center of Mass or FLEX_BODY LBRF)
+ 
+   Body Type       ID          X                     Y                     Z
+       PART/         1             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+       PART/         3            -0.2394455892717E+02             0.1799999997699E+02            -0.4452680739228E+02
+       PART/         4            -0.2394455891077E+02            -0.1800000002331E+02            -0.4452680738283E+02
+ 
+ 
+                         Angular Coordinates (Degrees)
+                      (Center of Mass or FLEX_BODY LBRF)
+ 
+   Body Type       ID         Psi                  Theta                  Phi
+       PART/         1             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+       PART/         3            -0.5088887490391E-13             0.3188178874617E-12             0.0000000000000E+00
+       PART/         4             0.1017777498065E-12             0.2505986463084E-12             0.0000000000000E+00
+ 
+ 
+                              Velocity Solution
+ 
+                           Rectangular Coordinates
+                      (Center of Mass or FLEX_BODY LBRF)
+ 
+   Body Type       ID         Xdot                  Ydot                  Zdot
+       PART/         1             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+       PART/         3             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+       PART/         4             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+ 
+ 
+                          Angular Coordinates (Rad/Time)
+                      (Center of Mass or FLEX_BODY LBRF)
+ 
+   Body Type       ID         Wx                   Wy                   Wz
+       PART/         1             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+       PART/         3             0.3141592653585E+01             0.5580589596805E-13            -0.5441398092706E+01
+       PART/         4             0.0000000000000E+00             0.0000000000000E+00             0.0000000000000E+00
+ 

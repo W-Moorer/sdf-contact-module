@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<AnalysisResultFiles rpmxver="1000" rdsolverver="10.1.11516.0" os="WINDOWS" filename="Ring - Cube - Centric Collision_01\Ring - Cube - Centric Collision">
+    <Command ID="1" type="Dynamic" StartTime="0" text="sim/dyn, end = 1, step = 1000">
+        <!--File type="rplt" path=".\Ring - Cube - Centric Collision.rplt" datatype="New"-->
+        <File type="rad" path=".\Ring - Cube - Centric Collision.rad" datatype="New" />
+        <File type="ran" path=".\Ring - Cube - Centric Collision.ran" datatype="New" />
+    </Command>
+    <Command ID="2" type="Stop" StartTime="1" text="stop" />
+</AnalysisResultFiles>
