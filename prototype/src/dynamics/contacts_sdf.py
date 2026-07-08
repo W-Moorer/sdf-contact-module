@@ -127,7 +127,11 @@ class SDFContactEngine:
             uA_damp = vA[:, None] + np.cross(wA, xw_v_T - rA[:, None], axis=0)
             uB_damp = vB[:, None] + np.cross(wB, xw_v_T - rB[:, None], axis=0)
             vn = np.sum((uA_damp - uB_damp).T * rg, axis=1)
-            fd = c_n * np.maximum(-vn, 0.0)[:, None] * rg * (p > 0)[:, None]
+            # Viscous damping: opposes motion in both directions (approach AND separation)
+            # fd = c * (-vn) * grad, where vn = normal component of relative velocity
+            # Positive vn = separating, negative vn = approaching
+            # -vn is positive when approaching (compression) and negative when separating (tension)
+            fd = c_n * (-vn)[:, None] * rg * (p > 0)[:, None]
             fn += fd
 
         uA = vA[None, :] + np.cross(wA[None, :], off_A)

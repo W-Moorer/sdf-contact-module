@@ -18,9 +18,14 @@ class ExplicitProjectedIntegrator:
             state.t += dt
             return
 
-        M, C, Q, J, b_c = self.assembler.assemble(state, dt)
+        M_sp, C, Q, J, b_c = self.assembler.assemble(state, dt)
 
-        acc, lam = solve_kkt(M, C, Q, J, b_c)
+        # Cache dense M, J, M_inv for reuse across kkt + projections
+        M_dense = M_sp.toarray()
+        J_dense = J.toarray() if hasattr(J, 'toarray') else np.asarray(J)
+        M_inv = np.linalg.inv(M_dense)
+
+        acc, lam = solve_kkt(M_dense, C, Q, J_dense, b_c, M_inv=M_inv)
 
         tmp_idx = 0
         for body in self.model.movable_bodies:
@@ -47,8 +52,10 @@ class ExplicitProjectedIntegrator:
                 state.R[idx] = dR @ state.R[idx]
             tmp_idx += 1
 
-        position_projection(self.model, state)
-        velocity_projection(self.model, state)
+        position_projection(self.model, state,
+                            J_precomputed=J_dense, M_precomputed=M_dense, M_inv_precomputed=M_inv)
+        velocity_projection(self.model, state,
+                            J_precomputed=J_dense, M_precomputed=M_dense, M_inv_precomputed=M_inv)
 
         state.t += dt
 

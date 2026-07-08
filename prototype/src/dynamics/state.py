@@ -27,20 +27,19 @@ class State:
 
     def pack_V(self):
         nb_m = len(self._movable_ids)
-        v_flat = np.zeros(3 * nb_m)
-        w_flat = np.zeros(3 * nb_m)
+        V = np.zeros(6 * nb_m)
         for i, bid in enumerate(self._movable_ids):
             idx = self._body_index[bid]
-            v_flat[3*i:3*i+3] = self.v[idx]
-            w_flat[3*i:3*i+3] = self.omega[idx]
-        return np.concatenate([v_flat, w_flat])
+            V[6*i:6*i+3] = self.v[idx]
+            V[6*i+3:6*i+6] = self.omega[idx]
+        return V
 
     def unpack_V(self, V):
         nb_m = len(self._movable_ids)
         for i, bid in enumerate(self._movable_ids):
             idx = self._body_index[bid]
-            self.v[idx] = V[3*i:3*i+3]
-            self.omega[idx] = V[nb_m*3 + 3*i:nb_m*3 + 3*i + 3]
+            self.v[idx] = V[6*i:6*i+3]
+            self.omega[idx] = V[6*i+3:6*i+6]
 
     def copy(self):
         s = State.__new__(State)

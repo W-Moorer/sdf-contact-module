@@ -9,7 +9,8 @@ def solve_mass(M, x):
     return np.linalg.solve(M, x)
 
 
-def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9):
+def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9,
+                             M_inv=None, J_dense=None):
     """
     Solve:
         M a - J^T λ = Q - C   (dynamics)
@@ -17,10 +18,12 @@ def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9):
 
     Handles rank-deficient J using scaled Schur complement + SVD pseudo-inverse.
 
+    M_inv and J_dense may be precomputed externally (avoids sparse→dense conversion).
+
     Returns: (acc, lambda, diagnostics)
     """
     nc = J.shape[0]
-    nv = M.shape[0]
+    nv = M.shape[0] if not isinstance(M, (int, float)) else M
 
     if nv == 0:
         return np.zeros(0), b_c.copy(), {'rank': 0, 'num_constraints': nc, 'redundant': nc}
@@ -30,14 +33,20 @@ def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9):
         a = solve_mass(M, rhs)
         return a, np.zeros(0), {'rank': 0, 'num_constraints': 0, 'redundant': 0}
 
-    J_dense = J.toarray() if isinstance(J, csr_matrix) else np.asarray(J)
-    M_dense = M.toarray() if isinstance(M, csr_matrix) else np.asarray(M)
+    if J_dense is None:
+        J_dense = J.toarray() if isinstance(J, csr_matrix) else np.asarray(J)
+
+    if M_inv is None:
+        M_dense = M.toarray() if isinstance(M, csr_matrix) else np.asarray(M)
+        M_inv = np.linalg.inv(M_dense)
+    else:
+        M_dense = None
 
     # 1. MinvQ = M^{-1} (Q - C)
-    MinvQ = solve_mass(M, Q - C)
+    MinvQ = M_inv @ (Q - C)
 
     # 2. Row scaling using approximate row norm
-    W_raw = J_dense @ solve_mass(M, J_dense.T)
+    W_raw = J_dense @ (M_inv @ J_dense.T)
     row_norm = np.sqrt(np.maximum(np.abs(np.diag(W_raw)), 1e-30))
     D = 1.0 / np.maximum(row_norm, 1e-12)
 
@@ -45,7 +54,7 @@ def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9):
     bs = D * b_c
 
     # 3. Scaled Schur complement
-    Minv_JsT = solve_mass(M, Js.T)
+    Minv_JsT = M_inv @ Js.T
     W = Js @ Minv_JsT
     rhs = bs - Js @ MinvQ
 
@@ -81,9 +90,9 @@ def solve_rank_deficient_kkt(M, C, Q, J, b_c, rank_tol=1e-9):
     return a, alpha, diag
 
 
-def solve_kkt(M, C, Q, J, b_c):
+def solve_kkt(M, C, Q, J, b_c, **kwargs):
     """Wrapper: calls solve_rank_deficient_kkt and extracts (acc, lam)."""
-    a, lam, diag = solve_rank_deficient_kkt(M, C, Q, J, b_c)
+    a, lam, diag = solve_rank_deficient_kkt(M, C, Q, J, b_c, **kwargs)
     if diag.get('redundant', 0) > 0 and diag.get('inconsistency', 0) > 1e-6:
         print(f"  [KKT] {diag['redundant']} redundant constraints, "
               f"inconsistency={diag['inconsistency']:.2e}")
