@@ -113,6 +113,8 @@ class SDFContactEngine:
             bmin_local = RA.T @ (sdf.bmin - rA) - margin
             bmax_local = RA.T @ (sdf.bmax - rA) + margin
             cull_idx = bvh.query(bmin_local, bmax_local)
+            if len(cull_idx) > int(0.8 * quad_mesh.num_points):
+                cull_idx = np.arange(quad_mesh.num_points)
         else:
             cull_idx = np.arange(quad_mesh.num_points)
 
@@ -216,6 +218,7 @@ class SDFContactEngine:
 
         bvh = self._bvh.get(pair_key)
         if bvh is not None:
+            # If query bbox covers all points, skip BVH
             bvh_indices = bvh.query(bmin_local, bmax_local)
         else:
             bvh_indices = np.arange(quad_mesh.num_points)

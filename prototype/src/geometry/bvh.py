@@ -56,20 +56,23 @@ class AABB_BVH:
 
     def query(self, query_min, query_max, margin=0.0):
         """Return indices of points whose AABB overlaps with query AABB + margin."""
-        result = []
-        self._query_node(self.root, query_min, query_max, margin, result)
-        return np.array(result, dtype=np.int32)
-
-    def _query_node(self, node, qmin, qmax, margin, result):
-        # Test overlap: node AABB vs query AABB
-        if np.any(node.aabb_max + margin < qmin) or np.any(node.aabb_min - margin > qmax):
-            return
-
-        if node.indices is not None:  # Leaf
-            result.extend(node.indices.tolist())
-        else:  # Internal
-            self._query_node(node.left, qmin, qmax, margin, result)
-            self._query_node(node.right, qmin, qmax, margin, result)
+        # If query fully encloses root AABB, return all points
+        if (query_min <= self.root.aabb_min - margin).all() and (query_max >= self.root.aabb_max + margin).all():
+            return np.arange(len(self.points), dtype=np.int32)
+        stack = [self.root]
+        parts = []
+        while stack:
+            node = stack.pop()
+            if np.any(node.aabb_max + margin < query_min) or np.any(node.aabb_min - margin > query_max):
+                continue
+            if node.indices is not None:
+                parts.append(node.indices)
+            else:
+                stack.append(node.left)
+                stack.append(node.right)
+        if not parts:
+            return np.zeros(0, dtype=np.int32)
+        return np.concatenate(parts)
 
     def query_sphere(self, center, radius):
         """Return indices of points within radius of center."""
