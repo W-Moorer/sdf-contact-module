@@ -5,6 +5,13 @@ from ..dynamics.constraints import (_all_residuals, num_joint_constraints,
 from ..dynamics.mass_matrix import build_mass_matrix, build_gyroscopic
 
 
+def _pseudo_inverse_solve(A, b, tol=1e-9):
+    U, S, Vt = np.linalg.svd(A, full_matrices=False)
+    smax = S[0] if len(S) > 0 else 0.0
+    keep = S > tol * max(smax, 1.0)
+    return Vt.T[:, keep] @ ((U[:, keep].T @ b) / S[keep])
+
+
 class BackwardEulerIntegrator:
     def __init__(self, model, contact_engine=None,
                  max_iter=20, tol=1e-8, line_search=True):
@@ -15,6 +22,7 @@ class BackwardEulerIntegrator:
         self.tol = tol
         self.line_search = line_search
         self.history = []
+        self._temp_state = None
 
     def integrate(self, state, T, dt, callback=None):
         n_steps = int(T / dt)
@@ -34,26 +42,42 @@ class BackwardEulerIntegrator:
         V0 = q0.pack_V()
         nc = num_joint_constraints(self.model) + num_drive_constraints(self.model)
         nb_m = self.model.num_movable
+        n_v = 6 * nb_m
 
-        z = np.concatenate([q0.pack_V(), np.zeros(nc)])
+        z = np.concatenate([V0, np.zeros(nc)])
+        R = self._residual(z, q0, dt)
+        K = None
+        prev_dz = None
+        prev_dR = None
 
         for iteration in range(self.max_iter):
-            R = self._residual(z, q0, dt)
             err = np.max(np.abs(R))
             if err < self.tol:
                 break
 
-            K = self._tangent(z, q0, dt)
-            dz = np.linalg.solve(K, -R)
+            if iteration == 0:
+                K = self._tangent(z, q0, dt, R_cache=R)
+            elif prev_dz is not None:
+                dz_norm = np.linalg.norm(prev_dz)
+                if dz_norm > 1e-30:
+                    K = K + np.outer(prev_dR - K @ prev_dz, prev_dz) / (dz_norm * dz_norm)
+
+            dz_raw = self._solve_kkt(K, -R)
 
             if self.line_search:
-                alpha = self._line_search(z, dz, q0, dt)
+                alpha = self._line_search(z, dz_raw, q0, dt, R0=R)
             else:
                 alpha = 1.0
 
-            z = z + alpha * dz
+            dz_actual = alpha * dz_raw
+            prev_dz = dz_actual
+            z = z + dz_actual
 
-        V = z[:6*nb_m]
+            R_next = self._residual(z, q0, dt)
+            prev_dR = R_next - R
+            R = R_next
+
+        V = z[:n_v]
         self._kinematic_update(q0, V, dt, state)
         state.t += dt
         self._record(state)
@@ -93,8 +117,10 @@ class BackwardEulerIntegrator:
         V = z[:6*nb_m]
         lam = z[6*nb_m:]
 
-        state = q0.copy()
-        self._kinematic_update(q0, V, dt, state)
+        if self._temp_state is None:
+            self._temp_state = q0.copy()
+        self._kinematic_update(q0, V, dt, self._temp_state)
+        state = self._temp_state
 
         M = build_mass_matrix(self.model, state).toarray()
         C = build_gyroscopic(self.model, state)
@@ -113,8 +139,9 @@ class BackwardEulerIntegrator:
         R_dyn = M @ (V - V0) / dt + C - Q
 
         nc = num_joint_constraints(self.model) + num_drive_constraints(self.model)
+        J = None
         if nc > 0:
-            from ..dynamics.constraints import eval_constraint_jacobian, eval_drive_constraints
+            from ..dynamics.constraints import eval_constraint_jacobian
             J_joint = eval_constraint_jacobian(self.model, state)
             nd = num_drive_constraints(self.model)
             J_drive = np.zeros((nd, 6 * nb_m))
@@ -129,30 +156,41 @@ class BackwardEulerIntegrator:
             R_dyn -= J.T @ lam
 
         Phi = _all_residuals(self.model, state)
+
+        # Cache for analytic tangent
+        self._cache_M = M
+        self._cache_J = J
+        self._cache_nb_m = nb_m
+        self._cache_nc = nc
+
         return np.concatenate([R_dyn, Phi])
 
-    def _tangent(self, z, q0, dt):
-        eps = 1e-7
-        R0 = self._residual(z, q0, dt)
-        n = len(z)
-        K = np.zeros((n, n))
+    def _tangent(self, z, q0, dt, R_cache=None):
+        nb_m = self._cache_nb_m
+        nc = self._cache_nc
+        nv = 6 * nb_m
+        n = nv + nc
 
-        for i in range(n):
-            zp = z.copy()
-            zp[i] += eps
-            Rp = self._residual(zp, q0, dt)
-            K[:, i] = (Rp - R0) / eps
+        K = np.zeros((n, n))
+        K[:nv, :nv] = self._cache_M / dt
+        if nc > 0 and self._cache_J is not None:
+            K[:nv, nv:] = -self._cache_J.T
+            K[nv:, :nv] = dt * self._cache_J
 
         return K
 
-    def _line_search(self, z, dz, q0, dt):
-        R0_norm = np.linalg.norm(self._residual(z, q0, dt))
+    def _line_search(self, z, dz, q0, dt, R0=None):
+        R0_norm = np.linalg.norm(R0) if R0 is not None else np.linalg.norm(self._residual(z, q0, dt))
         for alpha in [1.0, 0.5, 0.25, 0.125, 0.0625]:
             z_new = z + alpha * dz
             R_norm = np.linalg.norm(self._residual(z_new, q0, dt))
             if R_norm < R0_norm:
                 return alpha
         return 1.0
+
+    @staticmethod
+    def _solve_kkt(K, rhs):
+        return np.linalg.lstsq(K, rhs, rcond=1e-12)[0]
 
     def _record(self, state):
         from ..dynamics.joints_revolute import revolute_joint_coordinate
