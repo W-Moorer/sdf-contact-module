@@ -119,7 +119,7 @@ class SDFContactEngine:
             cull_idx = np.arange(quad_mesh.num_points)
 
         if len(cull_idx) == 0:
-            return None
+            cull_idx = np.arange(quad_mesh.num_points)
 
         X_w = rA[:, None] + RA @ quad_mesh.X_q[cull_idx].T
         Y_local = RB.T @ (X_w - rB[:, None])
@@ -223,7 +223,7 @@ class SDFContactEngine:
             bvh_indices = np.arange(quad_mesh.num_points)
 
         if len(bvh_indices) == 0:
-            return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
+            bvh_indices = np.arange(quad_mesh.num_points)
 
         # --- Transform only BVH-culled points ---
         X_w = rA[:, None] + RA @ quad_mesh.X_q[bvh_indices].T
@@ -245,6 +245,7 @@ class SDFContactEngine:
         k_n = cp.normal_stiffness
         mu = cp.friction_coefficient
         epsilon = cp.activation_distance
+        k_order = getattr(cp, 'k_order', 1)
         regularizer = cp.quadrature_settings.get('regularizer', 1e-6)
         c_n = cp.quadrature_settings.get('damping', 0.0)
 
@@ -255,7 +256,7 @@ class SDFContactEngine:
             Y_local = Y_local - sdf_offset[None, :]
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
 
-        valid_mask = valid & (k_n * np.maximum(epsilon - g, 0.0) > 1e-30)
+        valid_mask = valid & (k_n * np.maximum(epsilon - g, 0.0)**k_order > 1e-30)
         if not np.any(valid_mask):
             return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
 
@@ -265,7 +266,7 @@ class SDFContactEngine:
         gv = g[valid_mask]
         rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
-        p = k_n * np.maximum(epsilon - gv, 0.0)
+        p = k_n * np.maximum(epsilon - gv, 0.0)**k_order
 
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.
         rg = (RB @ rg_local.T).T

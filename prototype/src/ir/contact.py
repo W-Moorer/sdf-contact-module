@@ -2,7 +2,7 @@ class ContactPair:
     def __init__(self, name, contact_id, body_a_id, body_b_id,
                  normal_stiffness=1e6, friction_coefficient=0.5,
                  activation_distance=0.0, contact_mode='A_quad_B_sdf',
-                 quadrature_settings=None):
+                 quadrature_settings=None, k_order=1):
         self.name = name
         self.id = contact_id
         self.body_a_id = body_a_id
@@ -12,3 +12,4 @@ class ContactPair:
         self.activation_distance = activation_distance
         self.contact_mode = contact_mode
         self.quadrature_settings = quadrature_settings or {}
+        self.k_order = k_order

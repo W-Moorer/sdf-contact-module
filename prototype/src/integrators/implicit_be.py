@@ -480,10 +480,8 @@ class BackwardEulerIntegrator:
                 err = np.max(np.abs(R)) if len(R) else 0.0
                 if err < self.tol:
                     break
-
-                K = self._tangent(z, q0, dt, R_cache=R, use_fd=use_fd)
+                K = self._tangent(z, q0, dt, R_cache=R, use_fd=(use_fd and iteration == 0))
                 dz_raw = self._solve_kkt(K, -R)
-
                 alpha = self._line_search(z, dz_raw, q0, dt, R0=R) if self.line_search else 1.0
                 z = z + alpha * dz_raw
                 R = self._residual(z, q0, dt)
@@ -601,7 +599,12 @@ class BackwardEulerIntegrator:
         return np.concatenate([R_dyn, Phi_scaled])
 
     def _contact_tangent(self, state, dt):
-        """Estimate diagonal contact stiffness contribution to KKT tangent."""
+        """Estimate diagonal contact stiffness contribution to KKT tangent.
+        
+        For KORDER=n: ∂F/∂V = k_n * n * δ^(n-1) * area * dt  (where δ = ε - g)
+        For n=1: ∂F/∂V = k_n * area * dt (δ-independent)
+        For n=2: ∂F/∂V = 2*k_n*δ*area*dt (δ-dependent, zero when δ=0)
+        """
         if self.contact_engine is None:
             return None
         nb_m = self.model.num_movable
@@ -611,24 +614,38 @@ class BackwardEulerIntegrator:
             if active_ids is not None and cp.id not in active_ids:
                 continue
             k_n = cp.normal_stiffness
+            k_order = getattr(cp, 'k_order', 1)
             c_n = cp.quadrature_settings.get('damping', 0.0)
             pair = self.contact_engine._pairs.get(cp.id)
             if pair is None:
                 continue
             qm, _ = pair
             area = np.sum(qm.w_q)
-            stiff = k_n * area * dt
+            # Estimate penetration δ from mesh velocity
+            ba = self.model.bodies.get(cp.body_a_id)
+            if ba is None:
+                continue
+            try:
+                idx_all = state.body_idx(ba.id)
+                vel = np.linalg.norm(state.v[idx_all])
+            except (KeyError, IndexError):
+                vel = 1.0
+            delta_est = max(vel * dt, 1e-10)
+            if k_order == 1:
+                stiff = k_n * area * dt
+            else:
+                # ∂F/∂V = k_n * k_order * δ^(k_order-1) * area * dt
+                stiff = k_n * k_order * (delta_est ** (k_order - 1)) * area * dt
+                # Add small regularization for δ→0 case
+                stiff += 1e3 * area * dt
             damp = c_n * area
             total = stiff + damp
-            ba = self.model.bodies.get(cp.body_a_id)
             if ba is None:
                 continue
             try:
                 idx_all = state.body_idx(ba.id)
             except KeyError:
                 continue
-            # state.body_idx is over all bodies, but generalized velocities are
-            # indexed over movable_bodies; find the movable slot explicitly.
             for movable_i, body in enumerate(self.model.movable_bodies):
                 if body.id == ba.id:
                     for d in range(3):

@@ -177,6 +177,7 @@ class RMDParser:
         c.action_marker_id = ent.get_int('IFLOAT')
         c.base_marker_id = ent.get_int('JFLOAT')
         c.stiffness = ent.get_float('K', 100000.0)
+        c.k_order = ent.get_int('KORDER', 1)
         c.damping = ent.get_float('C', 10.0)
         c.dynamic_friction = ent.get_float('D_F_C', 0.0)
         c.static_friction = ent.get_float('S_F_C', 0.0)

@@ -167,16 +167,22 @@ class RMDToIR:
 
     def _add_contacts(self, raw, model):
         for cid, rc in raw.contacts.items():
+            k_order_raw = getattr(rc, 'k_order', 1)
+            ls = self.length_scale  # 0.001 (mm→m)
             cp = ContactPair(
                 name=rc.name or f"contact_{cid}",
                 contact_id=cid,
                 body_a_id=self._surface_body(rc.action_ggeom_id),
                 body_b_id=self._surface_body(rc.base_ggeom_id),
-                normal_stiffness=rc.stiffness / self.length_scale,
+                # K converts by length_scale^KORDER (penetration δ in RMD mm → m)
+                normal_stiffness=rc.stiffness / (ls ** k_order_raw),
                 friction_coefficient=rc.dynamic_friction,
-                activation_distance=rc.boundary_penetration * self.length_scale,
+                # BPEN converts by length_scale (mm → m)
+                activation_distance=rc.boundary_penetration * ls,
                 contact_mode='A_quad_B_sdf',
-                quadrature_settings={'regularizer': 1e-4, 'damping': rc.damping},
+                # Damping C converts by length_scale (RMD: N·s/mm → N·s/m)
+                quadrature_settings={'regularizer': 1e-4, 'damping': rc.damping * ls},
+                k_order=k_order_raw,
             )
             model.add_contact(cp)
             self._contact_map[cid] = cp
