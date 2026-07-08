@@ -51,11 +51,14 @@ class SDFContactEngine:
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
                       aabb_b_half=None, narrow_margin=0.01):
+        # Normalize quadrature weights: Σ w_q = 1 (penalty/damping share the same distribution)
+        w_total = np.sum(quadrature_mesh.w_q)
+        if w_total > 1e-30:
+            quadrature_mesh.w_q[:] = quadrature_mesh.w_q / w_total
         self._pairs[cp_id] = (quadrature_mesh, sdf_grid)
         self._aabb_a[cp_id] = AABB.from_points(quadrature_mesh.X_q)
         self._aabb_b[cp_id] = aabb_b_half
         self._narrow_margin = narrow_margin
-        # Build BVH over quadrature points in body-A local frame (marker frame)
         self._bvh[cp_id] = AABB_BVH(quadrature_mesh.X_q, leaf_size=16)
 
     @property
@@ -333,9 +336,6 @@ class SDFContactEngine:
         gv = g[valid_mask]
         rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
-        # k_n = K_RMD / ls^KORDER (total force coeff for A=1). Normalize by actual area.
-        total_area = max(np.sum(quad_mesh.w_q), 1e-30)
-        k_n = k_n / total_area
         p = k_n * np.maximum(-gv, 0.0)**k_order
 
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.
