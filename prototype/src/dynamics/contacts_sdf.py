@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from ..sdf_grid import AnalyticPlaneSDF
+from ..geometry.bvh import AABB_BVH
 
 
 @dataclass
@@ -42,6 +43,14 @@ class SDFContactEngine:
         self._aabb_a[cp_id] = AABB.from_points(quadrature_mesh.X_q)
         self._aabb_b[cp_id] = aabb_b_half
         self._narrow_margin = narrow_margin
+        # Build BVH over quadrature points in body-A local frame
+        self._bvh[cp_id] = AABB_BVH(quadrature_mesh.X_q, leaf_size=16)
+
+    @property
+    def _bvh(self):
+        if not hasattr(self, '__bvh'):
+            self.__bvh = {}
+        return self.__bvh
 
     def _check_broad_phase(self, cp, state, model):
         body_a = model.bodies[cp.body_a_id]
@@ -90,10 +99,23 @@ class SDFContactEngine:
         rA, RA = state.r[idx_a], state.R[idx_a]
         rB, RB = state.r[idx_b], state.R[idx_b]
 
-        X_w = rA[:, None] + RA @ quad_mesh.X_q.T
+        # BVH culling
+        bvh = self._bvh.get(pair_key)
+        if bvh is not None and hasattr(sdf, 'bmin') and hasattr(sdf, 'bmax'):
+            margin = max(self._narrow_margin, 0.05)
+            bmin_local = RA.T @ (sdf.bmin - rA) - margin
+            bmax_local = RA.T @ (sdf.bmax - rA) + margin
+            cull_idx = bvh.query(bmin_local, bmax_local)
+        else:
+            cull_idx = np.arange(quad_mesh.num_points)
+
+        if len(cull_idx) == 0:
+            return None
+
+        X_w = rA[:, None] + RA @ quad_mesh.X_q[cull_idx].T
         Y_local = RB.T @ (X_w - rB[:, None])
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local.T)
-        return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid
+        return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid, cull_idx
 
     def measure_pair(self, cp, state, model, activation_distance=None):
         """Measure signed gap and normal relative velocity for one contact pair.
@@ -105,7 +127,7 @@ class SDFContactEngine:
         if q is None:
             return ContactMeasure(cp.id, np.inf, 0.0, 0, 0, 0.0, -1)
 
-        quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid = q
+        quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid = q[:9]
         if not np.any(valid):
             return ContactMeasure(cp.id, np.inf, 0.0, 0, 0, 0.0, -1)
 
@@ -169,34 +191,60 @@ class SDFContactEngine:
         vA, wA = state.v[idx_a], state.omega[idx_a]
         vB, wB = state.v[idx_b], state.omega[idx_b]
 
-        X_w = rA[:, None] + RA @ quad_mesh.X_q.T
+        # --- BVH broad-phase culling ---
+        # Get cube's SDF bounding box in world (cube body frame is world)
+        if hasattr(sdf, 'bmin') and hasattr(sdf, 'bmax'):
+            bmin_w, bmax_w = sdf.bmin, sdf.bmax
+        else:
+            bmin_w, bmax_w = np.full(3, -1.0), np.full(3, 1.0)
+
+        margin = max(self._narrow_margin, 0.05)
+        # Transform cube bbox to body-A local frame
+        bmin_local = RA.T @ (bmin_w - rA) - margin
+        bmax_local = RA.T @ (bmax_w - rA) + margin
+
+        bvh = self._bvh.get(pair_key)
+        if bvh is not None:
+            bvh_indices = bvh.query(bmin_local, bmax_local)
+        else:
+            bvh_indices = np.arange(quad_mesh.num_points)
+
+        if len(bvh_indices) == 0:
+            return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
+
+        # --- Transform only BVH-culled points ---
+        X_w = rA[:, None] + RA @ quad_mesh.X_q[bvh_indices].T
         X_w_local = RB.T @ (X_w - rB[:, None])
 
         narrow_mask = self._narrow_filter(X_w_local.T, rB, RB)
         if np.isscalar(narrow_mask) or (isinstance(narrow_mask, slice) and narrow_mask == slice(None)):
-            active_indices = np.arange(quad_mesh.num_points)
+            local_active = np.arange(len(bvh_indices))
         elif isinstance(narrow_mask, np.ndarray) and narrow_mask.dtype == bool:
-            active_indices = np.where(narrow_mask)[0]
+            local_active = np.where(narrow_mask)[0]
         else:
-            active_indices = np.arange(quad_mesh.num_points)
+            local_active = np.arange(len(bvh_indices))
 
-        if len(active_indices) == 0:
+        if len(local_active) == 0:
             return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
 
+        # Map back to global quad mesh indices
+        active_indices = bvh_indices[local_active]
         k_n = cp.normal_stiffness
         mu = cp.friction_coefficient
         epsilon = cp.activation_distance
         regularizer = cp.quadrature_settings.get('regularizer', 1e-6)
         c_n = cp.quadrature_settings.get('damping', 0.0)
 
-        Y_local = X_w_local[:, active_indices].T
+        Y_local = X_w_local[:, local_active].T
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
 
         valid_mask = valid & (k_n * np.maximum(epsilon - g, 0.0) > 1e-30)
         if not np.any(valid_mask):
             return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
 
-        idx_active = active_indices[valid_mask]
+        # idx_active_global: global quad mesh indices for active points
+        idx_active_local = np.where(valid_mask)[0]
+        idx_active_global = active_indices[valid_mask]
         gv = g[valid_mask]
         rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
@@ -205,21 +253,24 @@ class SDFContactEngine:
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.
         rg = (RB @ rg_local.T).T
 
-        xw_v = X_w[:, idx_active].T
-        wv = quad_mesh.w_q[idx_active]
+        # Compute world positions for active points only
+        xw_active = rA[:, None] + RA @ quad_mesh.X_q[idx_active_global].T
+        xw_v = xw_active.T
+        wv = quad_mesh.w_q[idx_active_global]
         off_A = xw_v - rA[None, :]
 
         # Normal penalty force
         fn = p[:, None] * rg
         p_hat = p * gn
 
-        # Normal damping force: c_n * v_n * gradient
+        # Normal damping force: active as long as gap < epsilon (even after penalty force ends)
         if c_n > 0:
             uA_damp = vA[None, :] + np.cross(wA[None, :], off_A)
             off_B_damp = xw_v - rB[None, :]
             uB_damp = vB[None, :] + np.cross(wB[None, :], off_B_damp)
             vn = np.sum((uA_damp - uB_damp) * rg, axis=1)
-            fd = c_n * (-vn)[:, None] * rg * (p > 0)[:, None]
+            damp_active = gv < epsilon
+            fd = c_n * (-vn)[:, None] * rg * damp_active[:, None]
             fn += fd
 
         uA = vA[None, :] + np.cross(wA[None, :], off_A)
