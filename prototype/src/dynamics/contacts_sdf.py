@@ -37,6 +37,17 @@ class SDFContactEngine:
         self._aabb_b = {}
         self._narrow_margin = 0.01
         self.__bvh = {}
+        # SDF linearization cache for Newton iterations
+        self._cache_enabled = False
+        self._cache_cleared = True
+        self._cache_z_ref = None
+        self._cache_base_r = None    # body B's COM position at cache time
+        self._cache_base_R = None    # body B's COM rotation at cache time
+        self._cache_g = None         # (N,) gaps at reference state
+        self._cache_grad = None      # (N,3) SDF gradients at reference state
+        self._cache_valid = None     # (N,) valid flags at reference state
+        self._cache_lactive = None   # local active indices from narrow filter
+        self._cache_bvh_idx = None   # BVH cull indices at reference state
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
                       aabb_b_half=None, narrow_margin=0.01):
@@ -134,7 +145,24 @@ class SDFContactEngine:
 
         Y_local = (R_sdf @ quad_mesh.X_q[cull_idx].T + t_sdf[:, None]).T
         X_w = rA_m[:, None] + RA_m @ quad_mesh.X_q[cull_idx].T
-        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
+        # Use cached SDF results if available (from evaluate's cache)
+        use_cache = (self._cache_enabled and not self._cache_cleared
+                     and self._cache_g is not None)
+        if use_cache:
+            Δt = t_sdf - self._cache_t_ref
+            g = self._cache_g + self._cache_grad @ Δt
+            raw_grad = self._cache_grad
+            grad_norm = np.linalg.norm(raw_grad, axis=1)
+            unit_normal = raw_grad / np.maximum(grad_norm[:, None], 1e-30)
+            valid = self._cache_valid
+        else:
+            g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
+            if self._cache_enabled:
+                self._cache_g = g.copy()
+                self._cache_grad = raw_grad.copy()
+                self._cache_valid = valid.copy()
+                self._cache_t_ref = t_sdf.copy()
+                self._cache_cleared = False
         return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid, cull_idx
 
     def measure_pair(self, cp, state, model, activation_distance=None):
@@ -273,7 +301,27 @@ class SDFContactEngine:
         regularizer = cp.quadrature_settings.get('regularizer', 1e-6)
         c_n = cp.quadrature_settings.get('damping', 0.0)
 
-        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local[local_active])
+        # --- SDF query with optional linearization cache ---
+        use_cache = (self._cache_enabled and not self._cache_cleared
+                     and self._cache_lactive is not None
+                     and len(local_active) == len(self._cache_lactive))
+        if use_cache:
+            Δt = t_sdf - self._cache_t_ref
+            g_pred = self._cache_g + self._cache_grad @ Δt
+            g = g_pred
+            raw_grad = self._cache_grad
+            grad_norm = np.linalg.norm(raw_grad, axis=1)
+            unit_normal = raw_grad / np.maximum(grad_norm[:, None], 1e-30)
+            valid = self._cache_valid
+        else:
+            g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local[local_active])
+            if self._cache_enabled:
+                self._cache_g = g.copy()
+                self._cache_grad = raw_grad.copy()
+                self._cache_valid = valid.copy()
+                self._cache_t_ref = t_sdf.copy()
+                self._cache_lactive = local_active.copy()
+                self._cache_cleared = False
 
         valid_mask = valid & (k_n * np.maximum(-g, 0.0)**k_order > 1e-30)
         if not np.any(valid_mask):

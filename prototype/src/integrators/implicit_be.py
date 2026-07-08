@@ -471,6 +471,10 @@ class BackwardEulerIntegrator:
 
         old_filter = self._active_contact_ids_for_residual
         self._active_contact_ids_for_residual = active_contact_ids
+        # Enable SDF linearization cache for contact steps
+        if self.contact_engine is not None and active_contact_ids is not None and len(active_contact_ids) > 0:
+            self.contact_engine._cache_enabled = True
+            self.contact_engine._cache_cleared = True
         try:
             z = np.concatenate([V0, np.zeros(nc)])
             R = self._residual(z, q0, dt)
@@ -491,6 +495,9 @@ class BackwardEulerIntegrator:
                 self._record(state)
         finally:
             self._active_contact_ids_for_residual = old_filter
+            if self.contact_engine is not None:
+                self.contact_engine._cache_enabled = False
+                self.contact_engine._cache_cleared = True
 
     def _kinematic_update(self, q0, V, dt, state):
         state.r[:] = q0.r.copy()
