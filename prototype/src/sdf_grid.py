@@ -136,10 +136,69 @@ class TrilinearSDFGrid:
         return g, raw_grad, grad_norm, unit_normal, True
 
     def query_batch(self, Y_local):
-        results = [self.query(p) for p in Y_local]
-        g = np.array([r[0] for r in results])
-        raw_grad = np.array([r[1] for r in results])
-        grad_norm = np.array([r[2] for r in results])
-        unit_normal = np.array([r[3] for r in results])
-        valid = np.array([r[4] for r in results])
+        Y = np.asarray(Y_local, dtype=np.float64)
+        N = len(Y)
+        f = (Y - self.bmin[None, :]) / self.voxel[None, :] - 0.5
+        i0 = np.floor(f[:, 0]).astype(np.int32)
+        j0 = np.floor(f[:, 1]).astype(np.int32)
+        k0 = np.floor(f[:, 2]).astype(np.int32)
+        u = f[:, 0] - i0
+        v = f[:, 1] - j0
+        w = f[:, 2] - k0
+
+        # Bounds check
+        valid = (i0 >= 0) & (i0 + 1 < self.nx) & (j0 >= 0) & (j0 + 1 < self.ny) & (k0 >= 0) & (k0 + 1 < self.nz)
+
+        g = np.zeros(N, dtype=np.float64)
+        raw_grad = np.zeros((N, 3), dtype=np.float64)
+        grad_norm = np.zeros(N, dtype=np.float64)
+        unit_normal = np.zeros((N, 3), dtype=np.float64)
+        unit_normal[:, 2] = 1.0
+
+        if not np.any(valid):
+            return g, raw_grad, grad_norm, unit_normal, valid
+
+        idx = np.where(valid)[0]
+        i0v, j0v, k0v = i0[idx], j0[idx], k0[idx]
+        uv, vv, wv = u[idx], v[idx], w[idx]
+        phi = self.phi0
+        inv_h = 1.0 / self.voxel
+
+        # Gather 8 surrounding values
+        p000 = phi[i0v, j0v, k0v]
+        p100 = phi[i0v + 1, j0v, k0v]
+        p010 = phi[i0v, j0v + 1, k0v]
+        p110 = phi[i0v + 1, j0v + 1, k0v]
+        p001 = phi[i0v, j0v, k0v + 1]
+        p101 = phi[i0v + 1, j0v, k0v + 1]
+        p011 = phi[i0v, j0v + 1, k0v + 1]
+        p111 = phi[i0v + 1, j0v + 1, k0v + 1]
+
+        # Trilinear interpolation
+        one_u, one_v, one_w = 1.0 - uv, 1.0 - vv, 1.0 - wv
+        g[idx] = (p000 * one_u * one_v * one_w + p100 * uv * one_v * one_w +
+                  p010 * one_u * vv * one_w + p110 * uv * vv * one_w +
+                  p001 * one_u * one_v * wv + p101 * uv * one_v * wv +
+                  p011 * one_u * vv * wv + p111 * uv * vv * wv)
+
+        # Gradient
+        dg_dx = ((p100 - p000) * one_v * one_w + (p110 - p010) * vv * one_w +
+                 (p101 - p001) * one_v * wv + (p111 - p011) * vv * wv) * inv_h[0]
+        dg_dy = ((p010 - p000) * one_u * one_w + (p110 - p100) * uv * one_w +
+                 (p011 - p001) * one_u * wv + (p111 - p101) * uv * wv) * inv_h[1]
+        dg_dz = ((p001 - p000) * one_u * one_v + (p101 - p100) * uv * one_v +
+                 (p011 - p010) * one_u * vv + (p111 - p110) * uv * vv) * inv_h[2]
+
+        raw_grad[idx, 0] = dg_dx
+        raw_grad[idx, 1] = dg_dy
+        raw_grad[idx, 2] = dg_dz
+
+        gn = np.sqrt(dg_dx*dg_dx + dg_dy*dg_dy + dg_dz*dg_dz)
+        grad_norm[idx] = gn
+        mask_gn = gn > 1e-30
+        if np.any(mask_gn):
+            unit_normal[idx[mask_gn], 0] = dg_dx[mask_gn] / gn[mask_gn]
+            unit_normal[idx[mask_gn], 1] = dg_dy[mask_gn] / gn[mask_gn]
+            unit_normal[idx[mask_gn], 2] = dg_dz[mask_gn] / gn[mask_gn]
+
         return g, raw_grad, grad_norm, unit_normal, valid
