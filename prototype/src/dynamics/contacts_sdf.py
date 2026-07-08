@@ -37,27 +37,19 @@ class SDFContactEngine:
         self._aabb_b = {}
         self._narrow_margin = 0.01
         self.__bvh = {}
-        self.__sdf_offset = {}
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
-                      aabb_b_half=None, narrow_margin=0.01,
-                      marker_offset_b=None):
+                      aabb_b_half=None, narrow_margin=0.01):
         self._pairs[cp_id] = (quadrature_mesh, sdf_grid)
         self._aabb_a[cp_id] = AABB.from_points(quadrature_mesh.X_q)
         self._aabb_b[cp_id] = aabb_b_half
         self._narrow_margin = narrow_margin
-        # SDF marker offset: transforms from body-B COM frame to SDF's native frame
-        self._sdf_offset[cp_id] = np.asarray(marker_offset_b, dtype=float) if marker_offset_b is not None else np.zeros(3)
-        # Build BVH over quadrature points in body-A local frame
+        # Build BVH over quadrature points in body-A local frame (marker frame)
         self._bvh[cp_id] = AABB_BVH(quadrature_mesh.X_q, leaf_size=16)
 
     @property
     def _bvh(self):
         return self.__bvh
-
-    @property
-    def _sdf_offset(self):
-        return self.__sdf_offset
 
     def _check_broad_phase(self, cp, state, model):
         body_a = model.bodies[cp.body_a_id]
@@ -110,24 +102,39 @@ class SDFContactEngine:
         bvh = self._bvh.get(pair_key)
         if bvh is not None and hasattr(sdf, 'bmin') and hasattr(sdf, 'bmax'):
             margin = max(self._narrow_margin, 0.05)
-            bmin_local = RA.T @ (sdf.bmin - rA) - margin
-            bmax_local = RA.T @ (sdf.bmax - rA) + margin
+            action_frame = model.frames.get(cp.action_marker_id)
+            base_frame = model.frames.get(cp.base_marker_id)
+            if action_frame is not None and base_frame is not None:
+                R_ab, t_ab = action_frame.relative_to(base_frame, state)
+                R_ba = R_ab.T
+                t_ba = -R_ab.T @ t_ab
+                bmin_local = R_ba @ sdf.bmin + t_ba - margin
+                bmax_local = R_ba @ sdf.bmax + t_ba + margin
+            else:
+                bmin_local = RA.T @ (sdf.bmin - rA) - margin
+                bmax_local = RA.T @ (sdf.bmax - rA) + margin
             cull_idx = bvh.query(bmin_local, bmax_local)
-            if len(cull_idx) > int(0.8 * quad_mesh.num_points):
-                cull_idx = np.arange(quad_mesh.num_points)
         else:
             cull_idx = np.arange(quad_mesh.num_points)
 
         if len(cull_idx) == 0:
             cull_idx = np.arange(quad_mesh.num_points)
 
-        X_w = rA[:, None] + RA @ quad_mesh.X_q[cull_idx].T
-        Y_local = RB.T @ (X_w - rB[:, None])
-        # Apply SDF marker offset
-        sdf_offset = self._sdf_offset.get(pair_key, np.zeros(3))
-        if np.any(sdf_offset != 0):
-            Y_local = Y_local - sdf_offset[:, None]
-        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local.T)
+        # Marker-based transform: action marker → base marker frame
+        action_frame = model.frames.get(cp.action_marker_id)
+        base_frame = model.frames.get(cp.base_marker_id)
+        if action_frame is not None and base_frame is not None:
+            R_sdf, t_sdf = action_frame.relative_to(base_frame, state)
+            # World position of action marker origin + rotation
+            rA_m, RA_m = action_frame.world_pose(state)
+        else:
+            R_sdf = RB.T @ RA
+            t_sdf = RB.T @ (rA - rB)
+            rA_m, RA_m = rA, RA
+
+        Y_local = (R_sdf @ quad_mesh.X_q[cull_idx].T + t_sdf[:, None]).T
+        X_w = rA_m[:, None] + RA_m @ quad_mesh.X_q[cull_idx].T
+        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
         return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid, cull_idx
 
     def measure_pair(self, cp, state, model, activation_distance=None):
@@ -205,32 +212,49 @@ class SDFContactEngine:
         vB, wB = state.v[idx_b], state.omega[idx_b]
 
         # --- BVH broad-phase culling ---
-        # Get cube's SDF bounding box in world (cube body frame is world)
-        if hasattr(sdf, 'bmin') and hasattr(sdf, 'bmax'):
-            bmin_w, bmax_w = sdf.bmin, sdf.bmax
-        else:
-            bmin_w, bmax_w = np.full(3, -1.0), np.full(3, 1.0)
-
         margin = max(self._narrow_margin, 0.05)
-        # Transform cube bbox to body-A local frame
-        bmin_local = RA.T @ (bmin_w - rA) - margin
-        bmax_local = RA.T @ (bmax_w - rA) + margin
+
+        # Compute base→action marker transform for BVH query
+        action_frame = model.frames.get(cp.action_marker_id)
+        base_frame = model.frames.get(cp.base_marker_id)
+        if action_frame is not None and base_frame is not None:
+            R_ab, t_ab = action_frame.relative_to(base_frame, state)
+            # Base→action: R_ba, t_ba = R_ab^T, -R_ab^T @ t_ab
+            R_ba = R_ab.T
+            t_ba = -R_ab.T @ t_ab
+            bmin_sdf = sdf.bmin if hasattr(sdf, 'bmin') else np.full(3, -1.0)
+            bmax_sdf = sdf.bmax if hasattr(sdf, 'bmax') else np.full(3, 1.0)
+            bmin_local = R_ba @ bmin_sdf + t_ba - margin
+            bmax_local = R_ba @ bmax_sdf + t_ba + margin
+        else:
+            bmin_sdf = sdf.bmin if hasattr(sdf, 'bmin') else np.full(3, -1.0)
+            bmax_sdf = sdf.bmax if hasattr(sdf, 'bmax') else np.full(3, 1.0)
+            bmin_local = RA.T @ (bmin_sdf - rA) - margin
+            bmax_local = RA.T @ (bmax_sdf - rA) + margin
 
         bvh = self._bvh.get(pair_key)
         if bvh is not None:
-            # If query bbox covers all points, skip BVH
             bvh_indices = bvh.query(bmin_local, bmax_local)
         else:
             bvh_indices = np.arange(quad_mesh.num_points)
-
         if len(bvh_indices) == 0:
             bvh_indices = np.arange(quad_mesh.num_points)
 
-        # --- Transform only BVH-culled points ---
-        X_w = rA[:, None] + RA @ quad_mesh.X_q[bvh_indices].T
-        X_w_local = RB.T @ (X_w - rB[:, None])
+        # --- Marker-based SDF coordinate transform ---
+        # Transform quad points from action marker → base marker frame
+        action_frame = model.frames.get(cp.action_marker_id)
+        base_frame = model.frames.get(cp.base_marker_id)
+        if action_frame is not None and base_frame is not None:
+            R_sdf, t_sdf = action_frame.relative_to(base_frame, state)
+            rA_m, RA_m = action_frame.world_pose(state)
+        else:
+            R_sdf = RB.T @ RA
+            t_sdf = RB.T @ (rA - rB)
+            rA_m, RA_m = rA, RA
 
-        narrow_mask = self._narrow_filter(X_w_local.T, rB, RB)
+        Y_local = (R_sdf @ quad_mesh.X_q[bvh_indices].T + t_sdf[:, None]).T
+
+        narrow_mask = self._narrow_filter(Y_local, rB, RB)
         if np.isscalar(narrow_mask) or (isinstance(narrow_mask, slice) and narrow_mask == slice(None)):
             local_active = np.arange(len(bvh_indices))
         elif isinstance(narrow_mask, np.ndarray) and narrow_mask.dtype == bool:
@@ -241,7 +265,6 @@ class SDFContactEngine:
         if len(local_active) == 0:
             return np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
 
-        # Map back to global quad mesh indices
         active_indices = bvh_indices[local_active]
         k_n = cp.normal_stiffness
         mu = cp.friction_coefficient
@@ -250,12 +273,7 @@ class SDFContactEngine:
         regularizer = cp.quadrature_settings.get('regularizer', 1e-6)
         c_n = cp.quadrature_settings.get('damping', 0.0)
 
-        Y_local = X_w_local[:, local_active].T
-        # Apply SDF marker offset (transform from body-B COM to SDF's native frame)
-        sdf_offset = self._sdf_offset.get(pair_key, np.zeros(3))
-        if np.any(sdf_offset != 0):
-            Y_local = Y_local - sdf_offset[None, :]
-        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
+        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local[local_active])
 
         valid_mask = valid & (k_n * np.maximum(-g, 0.0)**k_order > 1e-30)
         if not np.any(valid_mask):
@@ -275,11 +293,11 @@ class SDFContactEngine:
         # Forces are accumulated in world coordinates. SDF gradients are local to body B.
         rg = (RB @ rg_local.T).T
 
-        # Compute world positions for active points only
-        xw_active = rA[:, None] + RA @ quad_mesh.X_q[idx_active_global].T
+        # Compute world positions of active quad points (action marker → world)
+        xw_active = rA_m[:, None] + RA_m @ quad_mesh.X_q[idx_active_global].T
         xw_v = xw_active.T
         wv = quad_mesh.w_q[idx_active_global]
-        off_A = xw_v - rA[None, :]
+        off_A = xw_v - rA[None, :]  # COM-relative for velocity/torque
 
         # Normal penalty force
         fn = p[:, None] * rg

@@ -169,6 +169,11 @@ class RMDToIR:
         for cid, rc in raw.contacts.items():
             k_order_raw = getattr(rc, 'k_order', 1)
             ls = self.length_scale  # 0.001 (mm→m)
+            # Get RM marker frames for each GSurface (where the geometry is defined)
+            surf_a = self._surface_map.get(rc.action_ggeom_id)
+            surf_b = self._surface_map.get(rc.base_ggeom_id)
+            rm_a = surf_a['rm_marker'] if surf_a else None  # frame ID
+            rm_b = surf_b['rm_marker'] if surf_b else None  # frame ID
             cp = ContactPair(
                 name=rc.name or f"contact_{cid}",
                 contact_id=cid,
@@ -183,6 +188,9 @@ class RMDToIR:
                 # Damping C: RMD N·s/mm → SI N·s/m (C/v_mm = C/(v_m/0.001) = C*1000)
                 quadrature_settings={'regularizer': 1e-4, 'damping': rc.damping / ls},
                 k_order=k_order_raw,
+                # GSurface RM markers define the coordinate frames for quad/SDF
+                action_marker_id=rm_a,
+                base_marker_id=rm_b,
             )
             model.add_contact(cp)
             self._contact_map[cid] = cp

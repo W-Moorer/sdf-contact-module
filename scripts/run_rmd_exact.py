@@ -15,6 +15,7 @@ RMD = os.path.join(SC, '..', 'models', '圆环-立方体-对心碰撞',
 converter = RMDToIR(); model = converter.load_file(RMD)
 for cp in model.contacts.values():
     cp.body_a_id, cp.body_b_id = cp.body_b_id, cp.body_a_id
+    cp.action_marker_id, cp.base_marker_id = cp.base_marker_id, cp.action_marker_id
     # Exact RMD parameters (importer already sets them):
     # normal_stiffness=1e8, k_order=2, activation_distance=1e-5, damping=10
 
@@ -30,16 +31,12 @@ def load_quad(path):
     return QuadratureMesh(np.array(X_q), np.array(w_q))
 
 qm = load_quad(os.path.join(SC, '..', 'models', 'rmd_ring.obj'))
-# Apply Frame 4 offset: Body2.Torus1.BaseGSurfacePatchRefMarker pos=[-0.099,-0.099,-0.024]
-# GSurface NODES in marker frame → transforms to body COM frame
-qm.X_q += np.array([-0.099, -0.099, -0.024])
-
+# Quad points stay in GSurface RM marker frame (action_marker_id from RMD)
 eng = SDFContactEngine(); cp_obj = list(model.contacts.values())[0]
 sdf = TrilinearSDFGrid(os.path.join(SC, '..', 'models', 'rmd_box_res128.sdf'))
-# Apply Frame 3 offset: Body1.Box1.BaseGSurfacePatchRefMarker pos=[-0.23,-0.23,-0.08]
-# SDF query in body COM → transforms to SDF native (marker) frame
+# SDF query in base marker frame via action_frame.relative_to(base_frame, state)
 eng.register_pair(cp_obj.id, qm, sdf, aabb_b_half=[0.23,0.23,0.5],
-                  narrow_margin=1.0, marker_offset_b=np.array([-0.23, -0.23, -0.08]))
+                  narrow_margin=1.0)
 
 state = State(model); idx4 = state.body_idx(4)
 intg = BackwardEulerIntegrator(model, contact_engine=eng, max_iter=50, tol=1e-8,
