@@ -1,4 +1,18 @@
 import numpy as np
+from dataclasses import dataclass
+from ..sdf_grid import AnalyticPlaneSDF
+
+
+@dataclass
+class ContactMeasure:
+    """Geometric/contact-kinematic measure for one registered contact pair."""
+    cp_id: int
+    gap: float
+    penetration: float
+    active_count: int
+    valid_count: int
+    normal_velocity: float = 0.0
+    min_point_index: int = -1
 
 
 class AABB:
@@ -20,6 +34,7 @@ class SDFContactEngine:
         self._pairs = {}
         self._aabb_a = {}
         self._aabb_b = {}
+        self._narrow_margin = 0.01
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
                       aabb_b_half=None, narrow_margin=0.01):
@@ -51,14 +66,88 @@ class SDFContactEngine:
         diff = aabb_a_world_center - rB
         return all(abs(diff[i]) <= aabb_a_world_half[i] + aabb_b_half[i] for i in range(3))
 
-    def _narrow_filter(self, X_w_local, rB, RB):
+    def _narrow_filter(self, X_w_local, rB=None, RB=None):
+        # X_w_local is already expressed in body-B local coordinates; do not subtract rB again.
         margin = self._narrow_margin
         if RB is None:
             return slice(None)
-        rB_flat = rB.ravel()
-        dz = X_w_local[:, 2] - rB_flat[2]
+        dz = X_w_local[:, 2]
         mask = np.abs(dz) < margin
         return mask
+
+    def _pair_query(self, cp, state, model):
+        """Return quadrature world points and SDF query arrays for exactly one pair."""
+        pair_key = cp.id
+        if pair_key not in self._pairs:
+            return None
+
+        quad_mesh, sdf = self._pairs[pair_key]
+        body_a = model.bodies[cp.body_a_id]
+        body_b = model.bodies[cp.body_b_id]
+        idx_a = state.body_idx(body_a.id)
+        idx_b = state.body_idx(body_b.id)
+
+        rA, RA = state.r[idx_a], state.R[idx_a]
+        rB, RB = state.r[idx_b], state.R[idx_b]
+
+        X_w = rA[:, None] + RA @ quad_mesh.X_q.T
+        Y_local = RB.T @ (X_w - rB[:, None])
+        g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local.T)
+        return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid
+
+    def measure_pair(self, cp, state, model, activation_distance=None):
+        """Measure signed gap and normal relative velocity for one contact pair.
+
+        Negative gap means penetration. The result is per ContactPair, which is the
+        current code's natural representation of a contact region.
+        """
+        q = self._pair_query(cp, state, model)
+        if q is None:
+            return ContactMeasure(cp.id, np.inf, 0.0, 0, 0, 0.0, -1)
+
+        quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid = q
+        if not np.any(valid):
+            return ContactMeasure(cp.id, np.inf, 0.0, 0, 0, 0.0, -1)
+
+        valid_idx = np.where(valid)[0]
+        g_valid = g[valid]
+        local_argmin = int(np.argmin(g_valid))
+        min_idx = int(valid_idx[local_argmin])
+        g_min = float(g[min_idx])
+        penetration = max(0.0, -g_min)
+
+        eps = cp.activation_distance if activation_distance is None else activation_distance
+        active_count = int(np.sum(valid & (g <= eps)))
+
+        # normal relative velocity at the minimum-gap quadrature point
+        body_a = model.bodies[cp.body_a_id]
+        body_b = model.bodies[cp.body_b_id]
+        idx_a = state.body_idx(body_a.id)
+        idx_b = state.body_idx(body_b.id)
+        rA, rB = state.r[idx_a], state.r[idx_b]
+        RB = state.R[idx_b]
+        vA, wA = state.v[idx_a], state.omega[idx_a]
+        vB, wB = state.v[idx_b], state.omega[idx_b]
+        xw = X_w[:, min_idx]
+        n_world = RB @ unit_normal[min_idx]
+        n_norm = np.linalg.norm(n_world)
+        if n_norm > 1e-30:
+            n_world = n_world / n_norm
+        uA = vA + np.cross(wA, xw - rA)
+        uB = vB + np.cross(wB, xw - rB)
+        normal_velocity = float(np.dot(uA - uB, n_world))
+
+        return ContactMeasure(cp.id, g_min, penetration, active_count,
+                              int(np.sum(valid)), normal_velocity, min_idx)
+
+    def measure_all(self, model, state, cp_ids=None):
+        wanted = None if cp_ids is None else set(cp_ids)
+        out = {}
+        for cp in model.contacts.values():
+            if wanted is not None and cp.id not in wanted:
+                continue
+            out[cp.id] = self.measure_pair(cp, state, model)
+        return out
 
     def evaluate(self, cp, state, model):
         pair_key = cp.id
@@ -109,9 +198,12 @@ class SDFContactEngine:
 
         idx_active = active_indices[valid_mask]
         gv = g[valid_mask]
-        rg = raw_grad[valid_mask]
+        rg_local = raw_grad[valid_mask]
         gn = grad_norm[valid_mask]
         p = k_n * np.maximum(epsilon - gv, 0.0)
+
+        # Forces are accumulated in world coordinates. SDF gradients are local to body B.
+        rg = (RB @ rg_local.T).T
 
         xw_v = X_w[:, idx_active].T
         wv = quad_mesh.w_q[idx_active]
@@ -123,14 +215,10 @@ class SDFContactEngine:
 
         # Normal damping force: c_n * v_n * gradient
         if c_n > 0:
-            xw_v_T = xw_v.T
-            uA_damp = vA[:, None] + np.cross(wA, xw_v_T - rA[:, None], axis=0)
-            uB_damp = vB[:, None] + np.cross(wB, xw_v_T - rB[:, None], axis=0)
-            vn = np.sum((uA_damp - uB_damp).T * rg, axis=1)
-            # Viscous damping: opposes motion in both directions (approach AND separation)
-            # fd = c * (-vn) * grad, where vn = normal component of relative velocity
-            # Positive vn = separating, negative vn = approaching
-            # -vn is positive when approaching (compression) and negative when separating (tension)
+            uA_damp = vA[None, :] + np.cross(wA[None, :], off_A)
+            off_B_damp = xw_v - rB[None, :]
+            uB_damp = vB[None, :] + np.cross(wB[None, :], off_B_damp)
+            vn = np.sum((uA_damp - uB_damp) * rg, axis=1)
             fd = c_n * (-vn)[:, None] * rg * (p > 0)[:, None]
             fn += fd
 
@@ -157,10 +245,26 @@ class SDFContactEngine:
         tau_B = -(tau_A + np.cross(rA - rB, F_A))
         return F_A, tau_A, F_B, tau_B
 
-    def compute_Q_contact(self, model, state):
+    def min_gap(self, model, state, cp_id=None):
+        """Minimum signed distance. Negative = penetration."""
+        if cp_id is not None:
+            cp = model.contacts.get(cp_id)
+            if cp is None:
+                return np.inf
+            return self.measure_pair(cp, state, model).gap
+
+        g_min = np.inf
+        for cp in model.contacts.values():
+            g_min = min(g_min, self.measure_pair(cp, state, model).gap)
+        return g_min if np.isfinite(g_min) else np.inf
+
+    def compute_Q_contact(self, model, state, active_ids=None):
         nb_m = model.num_movable
         Q = np.zeros(6 * nb_m)
+        wanted = None if active_ids is None else set(active_ids)
         for cp in model.contacts.values():
+            if wanted is not None and cp.id not in wanted:
+                continue
             F_A, tau_A, F_B, tau_B = self.evaluate(cp, state, model)
             self._add_to_Q(Q, model, cp.body_a_id, F_A, tau_A)
             self._add_to_Q(Q, model, cp.body_b_id, F_B, tau_B)
