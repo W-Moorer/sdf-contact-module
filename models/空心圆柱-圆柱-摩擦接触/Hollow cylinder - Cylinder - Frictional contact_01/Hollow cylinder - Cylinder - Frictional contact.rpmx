@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<AnalysisResultFiles rpmxver="1000" rdsolverver="10.1.11516.0" os="WINDOWS" filename="Hollow cylinder - Cylinder - Frictional contact_01\Hollow cylinder - Cylinder - Frictional contact">
+    <Command ID="1" type="Dynamic" StartTime="0" text="sim/dyn, end = 1, step = 1000">
+        <!--File type="rplt" path=".\Hollow cylinder - Cylinder - Frictional contact.rplt" datatype="New"-->
+        <File type="rad" path=".\Hollow cylinder - Cylinder - Frictional contact.rad" datatype="New" />
+        <File type="ran" path=".\Hollow cylinder - Cylinder - Frictional contact.ran" datatype="New" />
+    </Command>
+    <Command ID="2" type="Stop" StartTime="1" text="stop" />
+</AnalysisResultFiles>

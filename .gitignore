@@ -15,3 +15,10 @@ build/
 # Python cache
 __pycache__/
 *.pyc
+
+# output artifacts
+prototype/outputs/
+prototype/data/
+reference_csv/
+assets/validation/
+scripts/__pycache__/
