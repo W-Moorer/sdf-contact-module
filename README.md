@@ -24,6 +24,40 @@ A standalone C++ plugin for building, storing, and querying **Signed Distance Fi
 - **OpenMP** parallel acceleration (optional CUDA support)
 - **Eigen3** header-only dependency — fully standalone (no NexDyn core required)
 
+## Validation: Ring-Cube Contact (Implicit BE + Adaptive TOI + SDF)
+
+An **implicit Backward Euler integrator** with adaptive Time-of-Impact (TOI) bisection, per-contact-region state machine, and SDF-based penalty contact validates against a RecurDyn reference for a ring falling onto a cube.
+
+<div align="center">
+<img src="assets/figures/be_rmd_exact.png" width="850" alt="Ring-cube validation results"/>
+</div>
+
+**Key result**: The ring settles at **z = 64.8 mm** (RecurDyn reference: 65.0 mm, error = 0.3 %). The contact force at equilibrium exactly balances gravity (**Fz = mg = 25.6 N**).
+
+| Metric | BE | RecurDyn | Error |
+|--------|----|----------|-------|
+| Equilibrium Z | 64.8 mm | 65.0 mm | **0.3 %** |
+| Contact force (steady) | 25.6 N | — | ≈ mg |
+| Free-fall trajectory | match | (t < 0.16 s) | < 0.5 mm |
+| First-contact time | t ≈ 0.162 s | t ≈ 0.162 s | < 1 ms |
+
+### Numerical pipeline
+
+1. **SDF generation** — `SdfOracle` builds a 128³ signed-distance field from the cube OBJ mesh
+2. **GSurface quadrature** — 7680 triangle centroids from the ring's RMD GSurface, with weights normalized to Σw = 1
+3. **Marker transform** — Unified `Frame.relative_to()` transforms action-marker (ring GSurface) → base-marker (cube SDF) coordinates
+4. **Adaptive TOI** — Binary search locates first contact within 1 μm penetration, then transitions through a 6-phase state machine (INACTIVE → APPROACHING → IMPACTING → ACTIVE → STABLE → LEAVING)
+5. **SDF linearization cache** — Newton iterations predict gaps via `g + ∇g·Δt` instead of re-querying the SDF, giving a **25× speedup**
+6. **BVH with root‑AABB shortcut** — Full-coverage queries return `np.arange(7680)` in O(1) instead of traversing the tree
+
+### RMD parameter translation
+
+| RMD field | Value | SI conversion | Rationale |
+|-----------|-------|---------------|-----------|
+| `K` / `KORDER` | 100000 / 2 | `kₙ = K / ls^KORDER` = 1e11 N/m^KORDER | Force `F = kₙ·δ^KORDER` |
+| `BPEN` | 0.01 | `ε = BPEN × ls` = 1e-5 m | Damping transition zone |
+| `C` | 10 | `cₙ = C / ls` = 1e4 N·s/m | N·s/mm → N·s/m |
+
 ## Validation: Torsional Friction on Annular Contact
 
 A Python theory prototype validates that **trilinear SDF + per-point friction integration** produces the correct non-zero torsional friction torque on a symmetric annular contact patch — a result that is lost when forces are averaged over the patch.
