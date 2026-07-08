@@ -38,11 +38,14 @@ class SDFContactEngine:
         self._narrow_margin = 0.01
 
     def register_pair(self, cp_id, quadrature_mesh, sdf_grid,
-                      aabb_b_half=None, narrow_margin=0.01):
+                      aabb_b_half=None, narrow_margin=0.01,
+                      marker_offset_b=None):
         self._pairs[cp_id] = (quadrature_mesh, sdf_grid)
         self._aabb_a[cp_id] = AABB.from_points(quadrature_mesh.X_q)
         self._aabb_b[cp_id] = aabb_b_half
         self._narrow_margin = narrow_margin
+        # SDF marker offset: transforms from body-B COM frame to SDF's native frame
+        self._sdf_offset[cp_id] = np.asarray(marker_offset_b, dtype=float) if marker_offset_b is not None else np.zeros(3)
         # Build BVH over quadrature points in body-A local frame
         self._bvh[cp_id] = AABB_BVH(quadrature_mesh.X_q, leaf_size=16)
 
@@ -51,6 +54,12 @@ class SDFContactEngine:
         if not hasattr(self, '__bvh'):
             self.__bvh = {}
         return self.__bvh
+
+    @property
+    def _sdf_offset(self):
+        if not hasattr(self, '__sdf_offset'):
+            self.__sdf_offset = {}
+        return self.__sdf_offset
 
     def _check_broad_phase(self, cp, state, model):
         body_a = model.bodies[cp.body_a_id]
@@ -114,6 +123,10 @@ class SDFContactEngine:
 
         X_w = rA[:, None] + RA @ quad_mesh.X_q[cull_idx].T
         Y_local = RB.T @ (X_w - rB[:, None])
+        # Apply SDF marker offset
+        sdf_offset = self._sdf_offset.get(pair_key, np.zeros(3))
+        if np.any(sdf_offset != 0):
+            Y_local = Y_local - sdf_offset[:, None]
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local.T)
         return quad_mesh, sdf, X_w, Y_local, g, raw_grad, grad_norm, unit_normal, valid, cull_idx
 
@@ -236,6 +249,10 @@ class SDFContactEngine:
         c_n = cp.quadrature_settings.get('damping', 0.0)
 
         Y_local = X_w_local[:, local_active].T
+        # Apply SDF marker offset (transform from body-B COM to SDF's native frame)
+        sdf_offset = self._sdf_offset.get(pair_key, np.zeros(3))
+        if np.any(sdf_offset != 0):
+            Y_local = Y_local - sdf_offset[None, :]
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
 
         valid_mask = valid & (k_n * np.maximum(epsilon - g, 0.0) > 1e-30)

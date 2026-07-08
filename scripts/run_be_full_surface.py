@@ -49,9 +49,10 @@ def load_obj_quadrature(path):
         X_q.append(centroid)
         w_q.append(area)
     X_q = np.array(X_q)
-    # RMD GSurface is on the ring's TOP (local z>0). Contact is with the BOTTOM.
-    # Negate z to put quadrature at the ring's physical contact face.
-    X_q[:, 2] = -X_q[:, 2]
+    # Transform from marker frame to body COM frame using Frame 4 offset
+    # Frame 4: Body2.Torus1.BaseGSurfacePatchRefMarker, pos=[-0.099, -0.099, -0.024]
+    marker_offset = np.array([-0.099, -0.099, -0.024])
+    X_q = X_q + marker_offset  # R=I for this marker
     return QuadratureMesh(X_q, np.array(w_q))
 
 ring_obj_path = os.path.join(MODELS, 'rmd_ring.obj')
@@ -66,7 +67,11 @@ print(f'  Local z: [{qm.X_q[:,2].min():.4f}, {qm.X_q[:,2].max():.4f}]')
 eng = SDFContactEngine()
 cp_obj = list(model.contacts.values())[0]
 cube_sdf = TrilinearSDFGrid(os.path.join(MODELS, 'rmd_box_res128.sdf'))
-eng.register_pair(cp_obj.id, qm, cube_sdf, aabb_b_half=[0.23,0.23,0.5], narrow_margin=0.2)
+# Cube SDF was generated from Frame 3: Body1.Box1.BaseGSurfacePatchRefMarker
+# marker_offset=[-0.23, -0.23, -0.08] — offset from cube COM to SDF coordinate frame
+cube_marker_offset = np.array([-0.23, -0.23, -0.08])
+eng.register_pair(cp_obj.id, qm, cube_sdf, aabb_b_half=[0.23,0.23,0.5],
+                  narrow_margin=0.2, marker_offset_b=cube_marker_offset)
 
 # --- Load reference ---
 print('Loading RecurDyn reference...')
