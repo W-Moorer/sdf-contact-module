@@ -1,0 +1,38 @@
+// RecurDyn-compatible RMD file: Simple pendulum
+[Units]
+  LENGTH = "m"
+  FORCE = "N"
+  TIME = "s"
+
+[Ground]
+  NAME = "ground"
+  MASS = 1e6
+  GROUND = true
+
+[Body]
+  NAME = "pendulum"
+  MASS = 1.0
+  [Inertia]
+    IXX = 0.01  IXY = 0.0  IXZ = 0.0
+    IYX = 0.0   IYY = 0.01  IYZ = 0.0
+    IZX = 0.0   IZY = 0.0  IZZ = 0.1
+  [Position]
+    X = 0  Y = 0  Z = -1.0
+
+[Marker]
+  NAME = "ground_pin"
+  BODY = "ground"
+  [Position]
+    X = 0  Y = 0  Z = 0
+
+[Marker]
+  NAME = "pendulum_pin"
+  BODY = "pendulum"
+  [Position]
+    X = 0  Y = 0  Z = 1.0
+
+[Joint]
+  NAME = "pin_joint"
+  TYPE = "REVOLUTE"
+  I = "ground_pin"
+  J = "pendulum_pin"
