@@ -1,24 +1,36 @@
 # sdf-contact-module Wiki
 
-SdfOracle — a standalone C++ plugin for building, storing, and querying Signed Distance Fields (SDF) from triangle meshes. Designed for contact mechanics in rigid-body simulation.
+A **RecurDyn RMD-compatible multibody dynamics validation framework** with **SDF (Signed Distance Field) contact mechanics**.
+
+## Project Components
+
+| Layer | Description | Language |
+|-------|-------------|----------|
+| **SdfOracle** | Build, store & query SDF from triangle meshes | C++17 |
+| **MBD-IR** | Multibody dynamics intermediate representation | Python |
+| **Dynamics** | Maximal-coordinate constrained dynamics (KKT + SVD) | Python |
+| **Contact** | AABB-BVH broad phase + trilinear SDF narrow phase | Python |
+| **Importers** | RecurDyn RMD format parser (real format) | Python |
+| **Validation** | RecurDyn vs Framework vs Analytical comparison | Python |
 
 ## Wiki Pages
 
 | Page | Description |
 |------|-------------|
-| [Architecture](architecture.md) | Overall plugin architecture and layering |
+| [Architecture](architecture.md) | SdfOracle plugin layering (C++) |
 | [Public API](api.md) | Query engine, I/O, builder interfaces |
-| [Algorithms](algorithms.md) | Query modes: trilinear, first/second-order, tricubic, contact-aware |
+| [Algorithms](algorithms.md) | SDF query modes: trilinear, tricubic, contact-aware |
 | [Solver Backends](solver-backends.md) | OpenMP and CUDA acceleration |
-| [Validation](validation.md) | SdfOracleDemo executable, CLI, benchmarks |
+| [Validation](validation.md) | Validation cases & comparison plots |
 | [Build](build.md) | CMake configuration and dependencies |
 | [Repository Layout](layout.md) | Directory structure and file organization |
 
 ## Quick Links
 
-- **Source**: `plugins/SdfOracle/`
-- **Build target**: `SdfOracleCore` (static lib), `SdfOracle` (static lib), `SdfOracleDemo` (executable)
-- **Dependencies**: Eigen3 (required), OpenMP (optional), CUDA (optional)
-- **File format**: `.sdf` binary (magic `"SDFO"`, version 0.1.0)
+- **Python MBD framework**: `prototype/src/`
+- **SDF C++ plugin**: `plugins/SdfOracle/`
+- **RecurDyn RMD importers**: `prototype/src/importers/`
+- **Validation scripts**: `scripts/compare_and_plot.py`
+- **Model files**: `models/` (OBJ + SDF + RMD)
 
-Last verified against: `plugins/SdfOracle/CMakeLists.txt`, `plugins/SdfOracle/include/SdfOracle/*.h`
+Last verified against: repository file tree

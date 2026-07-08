@@ -244,8 +244,8 @@ def compare_ring_cube():
     print(f'  Annular quad: {quad_mesh.num_points} pts')
 
     engine = ContactEng()
-    cp = list(model.contacts.values())[0]
-    engine.register_pair(cp.id, quad_mesh, AnalyticPlaneSDF(0.0),
+    cp_obj = list(model.contacts.values())[0]
+    engine.register_pair(cp_obj.id, quad_mesh, AnalyticPlaneSDF(0.0),
                          aabb_b_half=[0.1, 0.1, 0.1], narrow_margin=0.01)
 
     state = State(model); idx4 = state.body_idx(4)
@@ -258,18 +258,22 @@ def compare_ring_cube():
         intg.step(state, dt)
         our_t.append(state.t); our_z.append(state.r[idx4, 2]); our_vz.append(state.v[idx4, 2])
 
-    # Phase 2: contact with fine dt
-    print(f'  Fall done, z={state.r[idx4,2]:.4f}, switching to dt=1e-6...')
+    # Phase 2: contact with damping
+    for cp in model.contacts.values():
+        cp.quadrature_settings['damping'] = 30000.0  # near-critical damping (N*s/m)
+    dt_fine = 2e-5
+    print(f'  Fall done, z={state.r[idx4,2]:.4f}, vz={state.v[idx4,2]:.2f}, switching to dt={dt_fine}...')
+    settle_count = 0
     for i in range(200000):
-        intg.step(state, 1e-6)
-        z = state.r[idx4, 2]
-        if i % 500 == 0 and z < 0.025:
-            if abs(state.v[idx4, 2]) < 1e-4:
-                for _ in range(100):
-                    intg.step(state, 1e-6)
-                    our_t.append(state.t); our_z.append(state.r[idx4, 2])
+        intg.step(state, dt_fine)
+        our_t.append(state.t); our_z.append(state.r[idx4, 2]); our_vz.append(state.v[idx4, 2])
+        if abs(state.v[idx4, 2]) < 1e-5 and state.r[idx4, 2] > 0.0239:
+            settle_count += 1
+            if settle_count > 100:
+                print(f'  Settled at step {i}, t={state.t:.4f}, z={state.r[idx4,2]:.6f}')
                 break
-        our_t.append(state.t); our_z.append(z); our_vz.append(state.v[idx4, 2])
+        else:
+            settle_count = 0
 
     our_t = np.array(our_t); our_z_mm = np.array(our_z) * 1000.0
     print(f'  Contact done: z={state.r[idx4,2]:.6f} m, vz={state.v[idx4,2]:.6f}')

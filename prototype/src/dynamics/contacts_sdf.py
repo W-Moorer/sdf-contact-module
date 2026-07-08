@@ -98,6 +98,7 @@ class SDFContactEngine:
         mu = cp.friction_coefficient
         epsilon = cp.activation_distance
         regularizer = cp.quadrature_settings.get('regularizer', 1e-6)
+        c_n = cp.quadrature_settings.get('damping', 0.0)
 
         Y_local = X_w_local[:, active_indices].T
         g, raw_grad, grad_norm, unit_normal, valid = sdf.query_batch(Y_local)
@@ -116,8 +117,18 @@ class SDFContactEngine:
         wv = quad_mesh.w_q[idx_active]
         off_A = xw_v - rA[None, :]
 
+        # Normal penalty force
         fn = p[:, None] * rg
         p_hat = p * gn
+
+        # Normal damping force: c_n * v_n * gradient
+        if c_n > 0:
+            xw_v_T = xw_v.T
+            uA_damp = vA[:, None] + np.cross(wA, xw_v_T - rA[:, None], axis=0)
+            uB_damp = vB[:, None] + np.cross(wB, xw_v_T - rB[:, None], axis=0)
+            vn = np.sum((uA_damp - uB_damp).T * rg, axis=1)
+            fd = c_n * np.maximum(-vn, 0.0)[:, None] * rg * (p > 0)[:, None]
+            fn += fd
 
         uA = vA[None, :] + np.cross(wA[None, :], off_A)
         off_B = xw_v - rB[None, :]
